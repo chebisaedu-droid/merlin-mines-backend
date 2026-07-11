@@ -1,19 +1,21 @@
 {
-  "name": "merlin-mines-engine",
-  "version": "3.0.0",
-  "description": "Green Era Backend",
+  "name": "merlin-backend",
+  "version": "1.0.0",
+  "description": "Unified Backend Engine",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "axios": "^1.6.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "ws": "^8.13.0",
-    "cors": "^2.8.5"
+    "nodemailer": "^6.9.7",
+    "pg": "^8.11.3"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": "18.x"
   }
 }
-
