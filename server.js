@@ -241,7 +241,7 @@ app.post('/api/admin/approve-payout', authenticateAdmin, async (req, res) => {
 app.post('/api/v1/trade/withdraw', async (req, res) => {
     const { email, amount } = req.body;
     try {
-        // 1. Check Balance
+        //  1. Check Balance
         const userRes = await pool.query('SELECT balance FROM users WHERE email = $1', [email]);
         if(userRes.rows.length === 0) return res.status(404).json({message: "User not found"});
         
