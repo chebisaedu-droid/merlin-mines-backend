@@ -123,48 +123,62 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
         res.status(500).json({ success: false, message: "DB Update Failed" });
     }
 });
-
-// ➤ PAYMENT: DUAL STK PUSH (The Combat Engine)
+// ➤ PAYMENT: DUAL STK PUSH (The Clean Combat Engine)
 app.post('/api/v1/payment/dual-stk', async (req, res) => {
+    // 1. GET DATA FROM FRONTEND
     const { player1, player2, stakeAmount } = req.body;
-    
-    // 1. Prepare M-Pesa Config
-    const token = await getMpesaToken();
-       // 1. Prepare M-Pesa Config (HARDCODED FIX)
-    const token = await getMpesaToken();
-    
-    // ⚠️ USE OFFICIAL SANDBOX VALUES (Do NOT use process.env)
-    const shortCode = '174379'; 
-    const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
-    
-    // Generate Timestamp & Password
-    const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-    const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
 
-    // ⚠️ REPLACE THIS WITH YOUR REAL RAILWAY LINK
-    const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app';
-
-    // 2. Define the STK Payload Builder
-    const createStkPayload = (phone) => ({
-        BusinessShortCode: shortCode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: "CustomerPayBillOnline",
-        Amount: stakeAmount,
-        PartyA: phone,
-        PartyB: shortCode,
-        PhoneNumber: phone,
-        CallBackURL: callbackUrl,
-        AccountReference: "MERLIN_VS",
-        TransactionDesc: "Combat Stake"
-    });
-
+    // 2. HARDCODED SANDBOX CREDENTIALS (THE FIX)
+    // ---------------------------------------------------------
     try {
-        // 3. FIRE DUAL REQUESTS (Parallel Execution)
+        // A. Get the Token
+        const token = await getMpesaToken();
+
+        // B. Define Sandbox Constants
+        const shortCode = '174379'; 
+        const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
+        
+        // C. Generate Security Keys
+        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
+
+        // D. YOUR APP URL (⚠️ CHANGE THIS!)
+        const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app/api/v1/payment/callback'; 
+
+        // E. Payload Builder
+        const createStkPayload = (phone) => ({
+            BusinessShortCode: shortCode, 
+            Password: password,
+            Timestamp: timestamp,
+            TransactionType: "CustomerPayBillOnline",
+            Amount: "1", // Keep as 1 for testing
+            PartyA: phone, // Player's Phone
+            PartyB: shortCode, // Must be 174379
+            PhoneNumber: phone, // Player's Phone
+            CallBackURL: callbackUrl,
+            AccountReference: "MERLIN_VS",
+            TransactionDesc: "Combat Stake"
+        });
+
+        // 3. FIRE REQUESTS
+        console.log("🔥 FIRING DUAL STK...");
         const [p1Response, p2Response] = await Promise.all([
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player1.phone), { headers: { Authorization: `Bearer ${token}` } }),
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player2.phone), { headers: { Authorization: `Bearer ${token}` } })
         ]);
+
+        console.log("✅ DUAL STK SUCCESS");
+        res.json({ 
+            message: "Combat Initiated", 
+            p1: p1Response.data, 
+            p2: p2Response.data 
+        });
+
+    } catch (error) {
+        console.error("❌ STK ERROR:", error.response ? error.response.data : error.message);
+        res.status(500).json({ error: "Payment Failed", details: error.response ? error.response.data : error.message });
+    }
+});
 
         // 4. Create Match ID
         const matchId = "MATCH_" + Date.now();
