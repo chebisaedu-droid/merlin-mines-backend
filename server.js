@@ -143,7 +143,7 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
         const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
 
         // D. YOUR APP URL (⚠️ CHANGE THIS!)
-        const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app/api/v1/payment/callback'; 
+        const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app'; 
 
         // E. Payload Builder
         const createStkPayload = (phone) => ({
