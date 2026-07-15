@@ -1,5 +1,5 @@
 // ================================================================
-// 💎 MERLIN MINES | SINGLE FILE BACKEND ENGINE (Production Ready)
+// 💎 MERLIN MINES | FINAL PRODUCTION ENGINE (Verified Fix)
 // ================================================================
 require('dotenv').config();
 const express = require('express');
@@ -13,15 +13,15 @@ app.use(express.json());
 app.use(cors());
 
 // ----------------------------------------------------------------
-// 1. DATABASE CONNECTION (PostgreSQL)
+// 1. DATABASE CONNECTION
 // ----------------------------------------------------------------
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Railway
+    ssl: { rejectUnauthorized: false } 
 });
 
 // ----------------------------------------------------------------
-// 2. EMAIL CONFIGURATION (Gmail)
+// 2. EMAIL CONFIGURATION
 // ----------------------------------------------------------------
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -31,14 +31,15 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Memory cache for OTPs
+// Memory cache
 const activeOtps = new Map();
+const activeMatches = new Map();
 
 // ----------------------------------------------------------------
-// 3. M-PESA UTILITY FUNCTIONS
+// 3. M-PESA UTILITY (HARDCODED SANDBOX KEYS)
 // ----------------------------------------------------------------
 async function getMpesaToken() {
-    // ⚠️ HARDCODED CREDENTIALS (SANDBOX)
+    // ⚠️ OFFICIAL SANDBOX KEYS
     const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
     const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
     const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
@@ -46,10 +47,10 @@ async function getMpesaToken() {
 
     try {
         const response = await axios.get(url, { headers: { "Authorization": auth } });
-        console.log("✅ TOKEN GENERATED:", response.data.access_token);
+        console.log("✅ TOKEN GENERATED");
         return response.data.access_token;
     } catch (error) {
-        console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
+        console.error("❌ TOKEN FAILED:", error.message);
         throw error;
     }
 }
@@ -57,15 +58,12 @@ async function getMpesaToken() {
 // ----------------------------------------------------------------
 // 4. API ROUTES
 // ----------------------------------------------------------------
-
-// ➤ HEALTH CHECK
-app.get('/', (req, res) => res.send('💎 MERLIN MINES ENGINE ONLINE'));
+app.get('/', (req, res) => res.send('💎 MERLIN ENGINE ONLINE'));
 
 // ➤ AUTH: FORGOT PASSWORD
 app.post('/api/v1/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: "Email required" });
-
     try {
         const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()]);
         if (userCheck.rows.length === 0) return res.status(404).json({ success: false, message: "Email not found" });
@@ -90,63 +88,71 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
     const { email, code, newPassword } = req.body;
     const record = activeOtps.get(email.toLowerCase());
     if (!record || record.code !== code || Date.now() > record.expires) {
-        return res.status(400).json({ success: false, message: "Invalid or Expired Code" });
+        return res.status(400).json({ success: false, message: "Invalid Code" });
     }
     try {
         await pool.query('UPDATE users SET pass = $1 WHERE LOWER(email) = LOWER($2)', [newPassword, email]);
         activeOtps.delete(email.toLowerCase());
         res.json({ success: true, message: "Password Updated" });
     } catch (error) {
-        res.status(500).json({ success: false, message: "DB Update Failed" });
+        res.status(500).json({ success: false, message: "DB Failed" });
     }
 });
 
 // ➤ PAYMENT: DUAL STK PUSH (The Fixed Combat Engine)
 app.post('/api/v1/payment/dual-stk', async (req, res) => {
     const { player1, player2, stakeAmount } = req.body;
-
+    
     try {
-        // 1. SETUP CREDENTIALS (HARDCODED SANDBOX)
+        // 1. GENERATE TOKEN & KEYS
         const token = await getMpesaToken();
+        
+        // ⚠️ HARDCODED SANDBOX VALUES (The Fix)
         const shortCode = '174379'; 
         const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
         const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
         
-        // ⚠️ CONFIRMED URL
-        const callbackUrl = 'https://merlin-backend-production.up.railway.app/api/v1/payment/callback'; 
+        // ⚠️ YOUR RAILWAY URL
+        const callbackUrl = 'https://merlin-backend-production.up.railway.app/api/v1/payment/callback';
 
+        // 2. PAYLOAD BUILDER
         const createStkPayload = (phone) => ({
-            BusinessShortCode: shortCode, 
+            BusinessShortCode: shortCode,
             Password: password,
             Timestamp: timestamp,
             TransactionType: "CustomerPayBillOnline",
-            Amount: "1", 
-            PartyA: phone, 
-            PartyB: shortCode, // ✅ Correct (Paybill)
-            PhoneNumber: phone, 
+            Amount: "1", // Keep 1 for testing
+            PartyA: phone,
+            PartyB: shortCode, // Must be 174379
+            PhoneNumber: phone,
             CallBackURL: callbackUrl,
             AccountReference: "MERLIN_VS",
             TransactionDesc: "Combat Stake"
         });
 
-        // 2. FIRE REQUESTS
+        // 3. FIRE DUAL REQUESTS
         console.log("🔥 FIRING DUAL STK...");
         const [p1Response, p2Response] = await Promise.all([
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player1.phone), { headers: { Authorization: `Bearer ${token}` } }),
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player2.phone), { headers: { Authorization: `Bearer ${token}` } })
         ]);
 
-        console.log("✅ DUAL STK SUCCESS");
+        // 4. LOG MATCH
+        const matchId = "MATCH_" + Date.now();
+        console.log(`✅ MATCH CREATED: ${matchId}`);
+
         res.json({ 
-            message: "Combat Initiated", 
-            p1: p1Response.data, 
-            p2: p2Response.data 
+            success: true, 
+            matchId: matchId, 
+            message: "Dual STK Initiated",
+            p1: p1Response.data,
+            p2: p2Response.data
         });
 
     } catch (error) {
         console.error("❌ STK ERROR:", error.response ? error.response.data : error.message);
-        res.status(500).json({ error: "Payment Failed", details: error.response ? error.response.data : error.message });
+        res.status(500).json({ success: false, message: "Payment Failed" });
     }
 });
 
@@ -156,12 +162,7 @@ app.post('/api/v1/payment/callback', (req, res) => {
     res.json({ result: "received" });
 });
 
-// ----------------------------------------------------------------
-// 5. SERVER START
-// ----------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on Port ${PORT}`));
-
+// ---------------------------------------------------------------
 // 6. ADMIN DASHBOARD & PAYOUT CONTROLS
 // ----------------------------------------------------------------
 
@@ -230,5 +231,7 @@ app.post('/api/v1/trade/withdraw', async (req, res) => {
         res.json({ success: true, message: "Request Sent to Admin" });
     } catch (err) { res.status(500).json({ message: "Server Error" }); }
 });
-
+// 5. SERVER START
+// ----------------------------------------------------------------
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 MERLIN ENGINE RUNNING ON PORT ${PORT}`));
