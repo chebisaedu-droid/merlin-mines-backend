@@ -130,11 +130,19 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
     
     // 1. Prepare M-Pesa Config
     const token = await getMpesaToken();
-    const timestamp = getTimestamp();
-    const shortCode = process.env.MPESA_SHORTCODE;
-    const passkey = process.env.MPESA_PASSKEY;
-    const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-    const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+       // 1. Prepare M-Pesa Config (HARDCODED FIX)
+    const token = await getMpesaToken();
+    
+    // ⚠️ USE OFFICIAL SANDBOX VALUES (Do NOT use process.env)
+    const shortCode = '174379'; 
+    const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
+    
+    // Generate Timestamp & Password
+    const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+    const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
+
+    // ⚠️ REPLACE THIS WITH YOUR REAL RAILWAY LINK
+    const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app';
 
     // 2. Define the STK Payload Builder
     const createStkPayload = (phone) => ({
