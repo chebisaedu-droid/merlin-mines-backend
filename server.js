@@ -6,7 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
-const axios = require('axios'); // Requires: npm install axios
+const axios = require('axios'); 
 
 const app = express();
 app.use(express.json());
@@ -31,33 +31,21 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Memory cache for OTPs and Active Matches (Temporary storage)
+// Memory cache for OTPs
 const activeOtps = new Map();
-const activeMatches = new Map();
 
 // ----------------------------------------------------------------
 // 3. M-PESA UTILITY FUNCTIONS
 // ----------------------------------------------------------------
-// ==========================================
-// 🔐 M-PESA TOKEN GENERATOR (HARDCODED FIX)
-// ==========================================
 async function getMpesaToken() {
-    // 1. HARDCODE YOUR KEYS HERE (Inside the quotes)
+    // ⚠️ HARDCODED CREDENTIALS (SANDBOX)
     const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
     const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
-
-    // 2. USE SANDBOX URL
     const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-
-    // 3. CREATE AUTH HEADER
     const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
 
     try {
-        // 4. REQUEST THE TOKEN
-        const response = await axios.get(url, {
-            headers: { "Authorization": auth }
-        });
-
+        const response = await axios.get(url, { headers: { "Authorization": auth } });
         console.log("✅ TOKEN GENERATED:", response.data.access_token);
         return response.data.access_token;
     } catch (error) {
@@ -66,12 +54,6 @@ async function getMpesaToken() {
     }
 }
 
-
-const getTimestamp = () => {
-    const date = new Date();
-    return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-};
-
 // ----------------------------------------------------------------
 // 4. API ROUTES
 // ----------------------------------------------------------------
@@ -79,13 +61,12 @@ const getTimestamp = () => {
 // ➤ HEALTH CHECK
 app.get('/', (req, res) => res.send('💎 MERLIN MINES ENGINE ONLINE'));
 
-// ➤ AUTH: FORGOT PASSWORD (EMAIL)
+// ➤ AUTH: FORGOT PASSWORD
 app.post('/api/v1/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: "Email required" });
 
     try {
-        // Check DB for user
         const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()]);
         if (userCheck.rows.length === 0) return res.status(404).json({ success: false, message: "Email not found" });
 
@@ -98,7 +79,6 @@ app.post('/api/v1/auth/forgot-password', async (req, res) => {
             subject: "🔒 RESET CODE",
             text: `Your Security Code: ${otpCode}`
         });
-
         res.json({ success: true, message: "OTP Sent" });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server Error" });
@@ -109,11 +89,9 @@ app.post('/api/v1/auth/forgot-password', async (req, res) => {
 app.post('/api/v1/auth/reset-password', async (req, res) => {
     const { email, code, newPassword } = req.body;
     const record = activeOtps.get(email.toLowerCase());
-
     if (!record || record.code !== code || Date.now() > record.expires) {
         return res.status(400).json({ success: false, message: "Invalid or Expired Code" });
     }
-
     try {
         await pool.query('UPDATE users SET pass = $1 WHERE LOWER(email) = LOWER($2)', [newPassword, email]);
         activeOtps.delete(email.toLowerCase());
@@ -122,21 +100,20 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
         res.status(500).json({ success: false, message: "DB Update Failed" });
     }
 });
-// ➤ PAYMENT: DUAL STK PUSH (Verified Clean)
+
+// ➤ PAYMENT: DUAL STK PUSH (The Fixed Combat Engine)
 app.post('/api/v1/payment/dual-stk', async (req, res) => {
-    // 1. GET DATA
     const { player1, player2, stakeAmount } = req.body;
 
     try {
-        // 2. SETUP CREDENTIALS (HARDCODED SANDBOX)
+        // 1. SETUP CREDENTIALS (HARDCODED SANDBOX)
         const token = await getMpesaToken();
         const shortCode = '174379'; 
         const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
-        
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
         const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
         
-        // ⚠️ ENSURE THIS MATCHES YOUR RAILWAY URL
+        // ⚠️ CONFIRMED URL
         const callbackUrl = 'https://merlin-backend-production.up.railway.app/api/v1/payment/callback'; 
 
         const createStkPayload = (phone) => ({
@@ -146,14 +123,14 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
             TransactionType: "CustomerPayBillOnline",
             Amount: "1", 
             PartyA: phone, 
-            PartyB: shortCode, 
+            PartyB: shortCode, // ✅ Correct (Paybill)
             PhoneNumber: phone, 
             CallBackURL: callbackUrl,
             AccountReference: "MERLIN_VS",
             TransactionDesc: "Combat Stake"
         });
 
-        // 3. FIRE REQUESTS
+        // 2. FIRE REQUESTS
         console.log("🔥 FIRING DUAL STK...");
         const [p1Response, p2Response] = await Promise.all([
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player1.phone), { headers: { Authorization: `Bearer ${token}` } }),
@@ -173,29 +150,9 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
     }
 });
 
-        // 4. Create Match ID
-        const matchId = "MATCH_" + Date.now();
-        
-        // Save initial state (In production, save this to DB)
-        activeMatches.set(matchId, {
-            p1: { phone: player1.phone, paid: false, reqId: p1Response.data.CheckoutRequestID },
-            p2: { phone: player2.phone, paid: false, reqId: p2Response.data.CheckoutRequestID },
-            stake: stakeAmount * 2
-        });
-
-        res.json({ success: true, matchId: matchId, message: "Dual STK Initiated" });
-
-    } catch (error) {
-        console.error("STK Fail:", error.response ? error.response.data : error.message);
-        res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
-    }
-});
-
-// ➤ PAYMENT: CALLBACK HANDLER (Webhook)
+// ➤ PAYMENT: CALLBACK HANDLER
 app.post('/api/v1/payment/callback', (req, res) => {
-    // Safaricom sends payment results here
     console.log("💰 M-Pesa Callback:", JSON.stringify(req.body));
-    // TODO: Parse 'Body.stkCallback' to update match status in DB
     res.json({ result: "received" });
 });
 
@@ -203,7 +160,8 @@ app.post('/api/v1/payment/callback', (req, res) => {
 // 5. SERVER START
 // ----------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-// ----------------------------------------------------------------
+app.listen(PORT, () => console.log(`🚀 Server running on Port ${PORT}`));
+
 // 6. ADMIN DASHBOARD & PAYOUT CONTROLS
 // ----------------------------------------------------------------
 
