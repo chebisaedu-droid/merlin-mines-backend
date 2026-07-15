@@ -60,7 +60,6 @@ async function getMpesaToken() {
 
         console.log("✅ TOKEN GENERATED:", response.data.access_token);
         return response.data.access_token;
-
     } catch (error) {
         console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
         throw error;
@@ -123,38 +122,32 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
         res.status(500).json({ success: false, message: "DB Update Failed" });
     }
 });
-// ➤ PAYMENT: DUAL STK PUSH (The Clean Combat Engine)
+// ➤ PAYMENT: DUAL STK PUSH (Verified Clean)
 app.post('/api/v1/payment/dual-stk', async (req, res) => {
-    // 1. GET DATA FROM FRONTEND
+    // 1. GET DATA
     const { player1, player2, stakeAmount } = req.body;
 
-    // 2. HARDCODED SANDBOX CREDENTIALS (THE FIX)
-    // ---------------------------------------------------------
     try {
-        // A. Get the Token
+        // 2. SETUP CREDENTIALS (HARDCODED SANDBOX)
         const token = await getMpesaToken();
-
-        // B. Define Sandbox Constants
         const shortCode = '174379'; 
         const passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
         
-        // C. Generate Security Keys
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
         const password = Buffer.from(shortCode + passkey + timestamp).toString('base64');
+        
+        // ⚠️ ENSURE THIS MATCHES YOUR RAILWAY URL
+        const callbackUrl = 'https://merlin-backend-production.up.railway.app/api/v1/payment/callback'; 
 
-        // D. YOUR APP URL (⚠️ CHANGE THIS!)
-        const callbackUrl = 'https://merlin-mines-backend-production.up.railway.app'; 
-
-        // E. Payload Builder
         const createStkPayload = (phone) => ({
             BusinessShortCode: shortCode, 
             Password: password,
             Timestamp: timestamp,
             TransactionType: "CustomerPayBillOnline",
-            Amount: "1", // Keep as 1 for testing
-            PartyA: phone, // Player's Phone
-            PartyB: shortCode, // Must be 174379
-            PhoneNumber: phone, // Player's Phone
+            Amount: "1", 
+            PartyA: phone, 
+            PartyB: shortCode, 
+            PhoneNumber: phone, 
             CallBackURL: callbackUrl,
             AccountReference: "MERLIN_VS",
             TransactionDesc: "Combat Stake"
