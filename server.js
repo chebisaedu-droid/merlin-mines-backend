@@ -141,7 +141,7 @@ const formatPhoneNumber = (phone) => {
     return cleaned;
 };
 
-// ➤ PAYMENT: DUAL STK PUSH (The Combat Engine)
+// ➤ PAYMENT: DUAL STK PUSH (The Combat Engine - Nuclear Fix)
 app.post('/api/v1/payment/dual-stk', async (req, res) => {
     const { player1, player2, stakeAmount } = req.body;
 
@@ -170,33 +170,37 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
     const houseFee = totalPot * 0.20; // 20%
     const winnerPayout = totalPot * 0.80; // 80%
 
-    // 1. Prepare M-Pesa Config
-    const token = await getMpesaToken();
-    const timestamp = getTimestamp();
-    // ⚠️ CRITICAL: Using MPESA_PAYBILL as per your Railway Variables
-    const shortCode = process.env.MPESA_PAYBILL; 
-    const passkey = process.env.MPESA_PASSKEY;
-    const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-    const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-
-    // 2. Define the STK Payload Builder
-    const createStkPayload = (phone) => ({
-        BusinessShortCode: shortCode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: "CustomerPayBillOnline",
-        Amount: stakeAmount,
-        PartyA: phone,            // <--- USES CLEAN PHONE
-        PartyB: shortCode,
-        PhoneNumber: phone,       // <--- USES CLEAN PHONE
-        CallBackURL: callbackUrl,
-        AccountReference: "MERLIN_VS",
-        TransactionDesc: "Combat Stake"
-    });
-
+    // 🔐 STEP 3: PREPARE MPESA CONFIG (HARDCODED NUCLEAR FIX)
+    // We bypass process.env to eliminate variable errors
     try {
+        const token = await getMpesaToken();
+        
+        // ⚠️ HARDCODED SANDBOX VALUES (This Fixes "Wrong Credentials")
+        const shortCode = "174379"; 
+        const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
+        
+        // Inline Timestamp Generation (To ensure format is YYYYMMDDHHmmss)
+        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        
+        const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+        const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+
+        // 2. Define the STK Payload Builder
+        const createStkPayload = (phone) => ({
+            BusinessShortCode: shortCode,
+            Password: password,
+            Timestamp: timestamp,
+            TransactionType: "CustomerPayBillOnline",
+            Amount: stakeAmount,
+            PartyA: phone,            // <--- USES CLEAN PHONE
+            PartyB: shortCode,
+            PhoneNumber: phone,       // <--- USES CLEAN PHONE
+            CallBackURL: callbackUrl,
+            AccountReference: "MERLIN_VS",
+            TransactionDesc: "Combat Stake"
+        });
+
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        // ⚠️ We pass the CLEAN variables (p1Phone, p2Phone) here
         const [p1Response, p2Response] = await Promise.all([
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } }),
             axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
@@ -208,11 +212,11 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
         // 5. SAVE TO DB (With Tier Info & Clean Phones)
         activeMatches.set(matchId, {
             status: "PENDING",
-            tier: tier,               // <--- Saved for Admin
-            payout: winnerPayout,     // <--- Saved for Admin
-            revenue: houseFee,        // <--- Saved for Admin
-            p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID }, // Clean Phone
-            p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID }, // Clean Phone
+            tier: tier,               
+            payout: winnerPayout,     
+            revenue: houseFee,        
+            p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID }, 
+            p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID }, 
             stake: stakeAmount,
             winner: null
         });
@@ -221,9 +225,11 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
 
     } catch (error) {
         console.error("STK Fail:", error.response ? error.response.data : error.message);
+        // Even if Safaricom fails, we return 500 so the frontend knows
         res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
     }
 });
+
 
 // =================================================================
 // ➤ PAYMENT: CALLBACK HANDLER (The "Listener")
