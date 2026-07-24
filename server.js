@@ -288,29 +288,35 @@ app.post('/api/v1/payment/callback', (req, res) => {
     }
 });
 
+
 // =================================================================
 // ➤ ADMIN DASHBOARD 
 // =================================================================
-// ➤ GAME LOGIC: RECEIVE MATCH RESULT
-app.post('/api/v1/match/result', (req, res) => {
-    const { matchId, winner } = req.body; // winner should be 'p1' or 'p2'
+// ➤ GAME LOGIC: RECEIVE WINNER (The Referee)
+// ⚠️ UPDATED URL: Matches your Game Client exactly
+app.post('/api/v1/game/end', (req, res) => {
+    const { matchId, winner } = req.body; // Expects "p1" or "p2"
 
-    if (!activeMatches.has(matchId)) {
-        return res.status(404).json({ success: false, message: "Match not found" });
+    console.log(`🏁 END MATCH REQUEST: ${matchId} | WINNER: ${winner}`);
+
+    if (activeMatches.has(matchId)) {
+        const match = activeMatches.get(matchId);
+        
+        // 1. UPDATE STATUS
+        match.status = "COMPLETED";
+        match.winner = winner; 
+        
+        // 2. SAVE UPDATE
+        activeMatches.set(matchId, match);
+
+        console.log(`✅ MATCH CLOSED. Winner: ${winner}`);
+        res.json({ success: true, message: "Match Closed" });
+    } else {
+        console.log(`❌ MATCH NOT FOUND: ${matchId}`);
+        res.status(404).json({ success: false, message: "Match ID not found" });
     }
-
-    const match = activeMatches.get(matchId);
-    
-    // update the match state
-    match.status = "COMPLETED";
-    match.winner = winner; // 'p1' or 'p2'
-    match.winningPhone = winner === 'p1' ? match.p1.phone : match.p2.phone;
-    
-    activeMatches.set(matchId, match);
-
-    console.log(`🏆 MATCH ${matchId} FINISHED. Winner: ${match.winningPhone}`);
-    res.json({ success: true, message: "Result Saved" });
 });
+
 // 🔒 STRICT ADMIN AUTH MIDDLEWARE
 const authenticateAdmin = (req, res, next) => {
     const key = req.headers['x-master-key'] || req.query.key;
@@ -333,18 +339,29 @@ const authenticateAdmin = (req, res, next) => {
 };
 
 // 1. GET ALL MATCHES (For Admin Panel)
+// 1. GET ALL MATCHES (For Admin Panel)
 app.get('/api/v1/admin/matches', authenticateAdmin, (req, res) => {
     try {
         // Convert Map to Array for Frontend
         const matchList = Array.from(activeMatches.entries()).map(([id, data]) => ({
+            // 🆔 ID & Time
             matchId: id,
-            status: data.status || "PENDING", // PENDING = Waiting for Payment
-            p1: data.p1.phone,
-            p1_paid: data.p1.paid,
-            p2: data.p2.phone,
-            p2_paid: data.p2.paid,
-            stake: data.stake,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+
+            // 📊 Status & Tier
+            status: data.status || "PENDING",
+            tier: data.tier || "BRONZE",
+
+            // 👥 Players (Full Objects, so Admin can find .phone)
+            p1: data.p1, 
+            p2: data.p2,
+
+            // 🏆 Results
+            winner: data.winner,     // "p1" or "p2"
+            
+            // 💰 Money Stats
+            payout: data.payout,     // (Liability)
+            revenue: data.revenue    // (House Cut)
         }));
         
         res.json({ success: true, matches: matchList });
