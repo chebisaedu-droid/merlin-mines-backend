@@ -232,52 +232,62 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
 
 
 // =================================================================
-// ➤ PAYMENT: CALLBACK HANDLER (The "Listener")
+// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist")
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
     try {
         const callbackData = req.body.Body.stkCallback;
-        console.log("💰 CALLBACK RECEIVED:", JSON.stringify(callbackData));
+        // console.log("💰 CALLBACK RECEIVED:", JSON.stringify(callbackData)); // Uncomment for debug
 
-        // 1. EXTRACT CRITICAL DATA
-        const checkoutReqId = callbackData.CheckoutRequestID;
-        const resultCode = callbackData.ResultCode; // 0 = Success, 1032 = Cancelled
+        const resultCode = callbackData.ResultCode; // 0 = Success
 
-        // 2. FIND THE MATCH THIS PAYMENT BELONGS TO
-        // We look through all active matches to find which one has this CheckoutID
-        let targetMatchId = null;
-        let playerKey = null; // 'p1' or 'p2'
+        // 1. HANDLE CANCELLATION
+        if (resultCode !== 0) {
+            console.log("❌ PAYMENT CANCELLED/FAILED.");
+            return res.json({ result: "ok" });
+        }
 
-        for (const [matchId, matchData] of activeMatches.entries()) {
-            if (matchData.p1.reqId === checkoutReqId) {
-                targetMatchId = matchId;
-                playerKey = 'p1';
-                break;
+        // 2. EXTRACT PHONE NUMBER (The Robust Identifier)
+        const metaItems = callbackData.CallbackMetadata.Item;
+        const phoneObj = metaItems.find(item => item.Name === "PhoneNumber");
+        const paidPhone = phoneObj ? phoneObj.Value.toString() : null;
+
+        if (!paidPhone) return res.json({ result: "ok" }); // Should never happen
+
+        console.log(`📩 PAYMENT CONFIRMED FROM: ${paidPhone}`);
+
+        // 3. FIND THE MATCH & UPDATE STATUS
+        let matchFound = false;
+
+        for (const [matchId, match] of activeMatches.entries()) {
+            
+            // Is it Player 1?
+            if (match.p1.phone.toString() === paidPhone) {
+                match.p1.paid = true;
+                matchFound = true;
+                console.log(`✅ MATCH ${matchId}: Player 1 PAID.`);
             }
-            if (matchData.p2.reqId === checkoutReqId) {
-                targetMatchId = matchId;
-                playerKey = 'p2';
-                break;
+            
+            // Is it Player 2?
+            if (match.p2.phone.toString() === paidPhone) {
+                match.p2.paid = true;
+                matchFound = true;
+                console.log(`✅ MATCH ${matchId}: Player 2 PAID.`);
+            }
+
+            // 4. CHECK IF BOTH PAID (Unlock the Gate)
+            if (matchFound) {
+                if (match.p1.paid && match.p2.paid) {
+                    match.status = "READY_TO_FIGHT"; 
+                    console.log(`⚔️ MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
+                }
+                activeMatches.set(matchId, match); // Save Updates
+                break; // Stop scanning
             }
         }
 
-        if (targetMatchId && resultCode === 0) {
-            // 3. MARK PLAYER AS PAID
-            const match = activeMatches.get(targetMatchId);
-            match[playerKey].paid = true;
-            match[playerKey].receipt = callbackData.CallbackMetadata?.Item[1]?.Value; // Save M-Pesa Receipt
-            
-            // Check if BOTH are paid
-            if (match.p1.paid && match.p2.paid) {
-                match.status = "ACTIVE"; // Game is ready to start!
-                console.log(`✅ MATCH ${targetMatchId} IS LIVE! BOTH PAID.`);
-            } else {
-                console.log(`⚠️ MATCH ${targetMatchId}: Player ${playerKey} Paid. Waiting for opponent.`);
-            }
-
-            activeMatches.set(targetMatchId, match); // Update Memory
-        } else if (resultCode !== 0) {
-            console.log(`❌ PAYMENT CANCELLED for ReqID: ${checkoutReqId}`);
+        if (!matchFound) {
+            console.log("⚠️ WARNING: Payment received but no matching player found.");
         }
 
         res.json({ result: "processed" });
@@ -286,39 +296,6 @@ app.post('/api/v1/payment/callback', (req, res) => {
         console.error("Callback Error:", error.message);
         res.json({ result: "error" });
     }
-});
-// ➤ STATUS CHECK: WAITING ROOM POLLING ⏳
-// The Frontend calls this every 3 seconds to check if the door should open.
-app.get('/api/v1/match/status/:matchId', (req, res) => {
-    const { matchId } = req.params;
-
-    // 1. Validate Match Exists
-    if (!activeMatches.has(matchId)) {
-        return res.status(404).json({ success: false, message: "Match Invalid" });
-    }
-
-    const match = activeMatches.get(matchId);
-
-    // 2. CHECK PAYMENT STATUS (Real-Time from Memory)
-    const p1Ready = match.p1.paid; // Becomes TRUE when Callback sends ResultCode 0
-    const p2Ready = match.p2.paid; // Becomes TRUE when Callback sends ResultCode 0
-
-    // 3. DECISION LOGIC
-    let state = "WAITING";
-    
-    if (p1Ready && p2Ready) {
-        state = "READY_TO_FIGHT"; // 🟢 Both Green Lights
-    } else if (p1Ready || p2Ready) {
-        state = "PARTIAL";        // 🟡 One Paid, Waiting for Other
-    }
-
-    res.json({
-        success: true,
-        matchId: matchId,
-        state: state,
-        p1_paid: p1Ready,
-        p2_paid: p2Ready
-    });
 });
 
 
