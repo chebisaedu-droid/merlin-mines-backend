@@ -287,6 +287,39 @@ app.post('/api/v1/payment/callback', (req, res) => {
         res.json({ result: "error" });
     }
 });
+// ➤ STATUS CHECK: WAITING ROOM POLLING ⏳
+// The Frontend calls this every 3 seconds to check if the door should open.
+app.get('/api/v1/match/status/:matchId', (req, res) => {
+    const { matchId } = req.params;
+
+    // 1. Validate Match Exists
+    if (!activeMatches.has(matchId)) {
+        return res.status(404).json({ success: false, message: "Match Invalid" });
+    }
+
+    const match = activeMatches.get(matchId);
+
+    // 2. CHECK PAYMENT STATUS (Real-Time from Memory)
+    const p1Ready = match.p1.paid; // Becomes TRUE when Callback sends ResultCode 0
+    const p2Ready = match.p2.paid; // Becomes TRUE when Callback sends ResultCode 0
+
+    // 3. DECISION LOGIC
+    let state = "WAITING";
+    
+    if (p1Ready && p2Ready) {
+        state = "READY_TO_FIGHT"; // 🟢 Both Green Lights
+    } else if (p1Ready || p2Ready) {
+        state = "PARTIAL";        // 🟡 One Paid, Waiting for Other
+    }
+
+    res.json({
+        success: true,
+        matchId: matchId,
+        state: state,
+        p1_paid: p1Ready,
+        p2_paid: p2Ready
+    });
+});
 
 
 // =================================================================
