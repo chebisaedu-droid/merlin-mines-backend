@@ -386,9 +386,43 @@ app.post('/api/v1/admin/clear', authenticateAdmin, (req, res) => {
     activeMatches.clear();
     res.json({ success: true, message: "⚠️ ALL MATCH DATA CLEARED" });
 });
+// =============================================================
+// ➤ MISSING LINK: STATUS CHECKER (The Frontend asks this!)
+// =============================================================
+app.get('/api/v1/match/status/:matchId', (req, res) => {
+    const { matchId } = req.params;
+
+    // 1. CHECK IF MATCH EXISTS
+    if (!activeMatches.has(matchId)) {
+        // Return JSON, not HTML (Fixes the < error)
+        return res.json({ success: false, state: "NOT_FOUND", p1_paid: false, p2_paid: false });
+    }
+
+    const match = activeMatches.get(matchId);
+
+    // 2. CHECK STATUS
+    const p1Ready = match.p1.paid;
+    const p2Ready = match.p2.paid;
+
+    // 3. DECIDE STATE
+    let state = "WAITING";
+    if (p1Ready && p2Ready) {
+        state = "READY_TO_FIGHT";
+    }
+
+    // 4. SEND JSON RESPONSE
+    res.json({
+        success: true,
+        matchId: matchId,
+        state: state,
+        p1_paid: p1Ready,
+        p2_paid: p2Ready
+    });
+});
 
 // ----------------------------------------------------------------
 // 5. SERVER START
 // ----------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on Port ${PORT}`));
+ 
