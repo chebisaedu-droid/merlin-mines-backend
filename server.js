@@ -394,7 +394,7 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
 
     // 1. CHECK IF MATCH EXISTS
     if (!activeMatches.has(matchId)) {
-        // Return JSON, not HTML (Fixes the < error)
+        // Return JSON, not HTML (Fixes the SyntaxError)
         return res.json({ success: false, state: "NOT_FOUND", p1_paid: false, p2_paid: false });
     }
 
