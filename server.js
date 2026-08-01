@@ -387,14 +387,14 @@ app.post('/api/v1/admin/clear', authenticateAdmin, (req, res) => {
     res.json({ success: true, message: "⚠️ ALL MATCH DATA CLEARED" });
 });
 // =============================================================
-// ➤ MISSING LINK: STATUS CHECKER (The Frontend asks this!)
+// ➤ THE STATUS CHECKER (Connects Frontend to Database)
 // =============================================================
 app.get('/api/v1/match/status/:matchId', (req, res) => {
     const { matchId } = req.params;
 
     // 1. CHECK IF MATCH EXISTS
     if (!activeMatches.has(matchId)) {
-        // Return JSON, not HTML (Fixes the SyntaxError)
+        // Return JSON so the frontend doesn't crash
         return res.json({ success: false, state: "NOT_FOUND", p1_paid: false, p2_paid: false });
     }
 
@@ -404,13 +404,13 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
     const p1Ready = match.p1.paid;
     const p2Ready = match.p2.paid;
 
-    // 3. DECIDE STATE
+    // 3. DECIDE: UNLOCK OR WAIT?
     let state = "WAITING";
     if (p1Ready && p2Ready) {
-        state = "READY_TO_FIGHT";
+        state = "READY_TO_FIGHT"; // 🟢 THIS UNLOCKS THE BUTTON
     }
 
-    // 4. SEND JSON RESPONSE
+    // 4. SEND RESPONSE
     res.json({
         success: true,
         matchId: matchId,
@@ -419,6 +419,7 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
         p2_paid: p2Ready
     });
 });
+
 
 // ----------------------------------------------------------------
 // 5. SERVER START
