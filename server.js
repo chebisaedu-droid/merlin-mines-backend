@@ -229,74 +229,96 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
         res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
     }
 });
-
-
 // =================================================================
-// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist")
+// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - HARDENED)
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
     try {
         const callbackData = req.body.Body.stkCallback;
-        // console.log("💰 CALLBACK RECEIVED:", JSON.stringify(callbackData)); // Uncomment for debug
-
         const resultCode = callbackData.ResultCode; // 0 = Success
 
-        // 1. HANDLE CANCELLATION
+        // 1. HANDLE CANCELLATION IMMEDIATELY
         if (resultCode !== 0) {
-            console.log("❌ PAYMENT CANCELLED/FAILED.");
+            console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode}`);
             return res.json({ result: "ok" });
         }
 
-        // 2. EXTRACT PHONE NUMBER (The Robust Identifier)
+        // 2. EXTRACT PHONE NUMBER
         const metaItems = callbackData.CallbackMetadata.Item;
         const phoneObj = metaItems.find(item => item.Name === "PhoneNumber");
-        const paidPhone = phoneObj ? phoneObj.Value.toString() : null;
+        let paidPhone = phoneObj ? phoneObj.Value.toString().trim() : null;
 
-        if (!paidPhone) return res.json({ result: "ok" }); // Should never happen
+        if (!paidPhone) {
+            console.log("❌ CRITICAL: Callback missing PhoneNumber data.");
+            return res.json({ result: "ok" });
+        }
 
-        console.log(`📩 PAYMENT CONFIRMED FROM: ${paidPhone}`);
+        console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM: ${paidPhone}`);
 
-        // 3. FIND THE MATCH & UPDATE STATUS
+        // Helper function to normalize numbers (converts 0712345678 or +254712345678 to 254712345678)
+        const normalizePhone = (num) => {
+            if (!num) return "";
+            let cleaned = num.toString().replace(/\D/g, ''); // numbers only
+            if (cleaned.startsWith('0')) cleaned = '254' + cleaned.substring(1);
+            if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
+            return cleaned;
+        };
+
+        const targetPaidPhone = normalizePhone(paidPhone);
         let matchFound = false;
 
+        // 3. SCAN SYSTEM RECORDS (No early breaking to avoid lobby cross-talk)
         for (const [matchId, match] of activeMatches.entries()) {
             
-            // Is it Player 1?
-            if (match.p1.phone.toString() === paidPhone) {
+            // Skip matches that are already cleared or closed
+            if (match.status === "READY_TO_FIGHT") continue;
+
+            const savedP1Phone = normalizePhone(match.p1.phone);
+            const savedP2Phone = normalizePhone(match.p2.phone);
+
+            let matchUpdated = false;
+
+            // Check Player 1
+            if (savedP1Phone === targetPaidPhone && !match.p1.paid) {
                 match.p1.paid = true;
+                matchUpdated = true;
                 matchFound = true;
-                console.log(`✅ MATCH ${matchId}: Player 1 PAID.`);
+                console.log(`✅ MATCH [${matchId}]: Player 1 (${match.p1.name}) VERIFIED PAID.`);
             }
             
-            // Is it Player 2?
-            if (match.p2.phone.toString() === paidPhone) {
+            // Check Player 2
+            if (savedP2Phone === targetPaidPhone && !match.p2.paid) {
                 match.p2.paid = true;
+                matchUpdated = true;
                 matchFound = true;
-                console.log(`✅ MATCH ${matchId}: Player 2 PAID.`);
+                console.log(`✅ MATCH [${matchId}]: Player 2 (${match.p2.name}) VERIFIED PAID.`);
             }
 
-            // 4. CHECK IF BOTH PAID (Unlock the Gate)
-            if (matchFound) {
+            // 4. TRANSACTION GATE EVALUATION
+            if (matchUpdated) {
+                // Double check if BOTH requirements are cleared in memory
                 if (match.p1.paid && match.p2.paid) {
                     match.status = "READY_TO_FIGHT"; 
-                    console.log(`⚔️ MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
+                    console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
                 }
-                activeMatches.set(matchId, match); // Save Updates
-                break; // Stop scanning
+                
+                activeMatches.set(matchId, match); // Commit changes back to system memory Map
+                // NOTE: Removed the 'break' statement here so system evaluates clean matches properly without blocking.
             }
         }
 
         if (!matchFound) {
-            console.log("⚠️ WARNING: Payment received but no matching player found.");
+            console.log(`⚠️ ALERT: Received KES payment from ${paidPhone} but no active pending match has this number.`);
         }
 
         res.json({ result: "processed" });
 
     } catch (error) {
-        console.error("Callback Error:", error.message);
+        console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
         res.json({ result: "error" });
     }
 });
+
 
 
 // =================================================================
