@@ -1853,7 +1853,50 @@ app.get(
 // ============================================================================
 // 💎 END OF MERLIN DIGITAL MODULE
 // ============================================================================
+// ================================================================
+// ➤ MERLIN DIGITAL SHOP — M-PESA CALLBACK
+// ================================================================
+app.post('/api/v1/merlin-digital/callback', (req, res) => {
+    try {
+        const callback = req.body?.Body?.stkCallback;
 
+        if (!callback) {
+            console.log("❌ Invalid M-Pesa callback");
+            return res.json({ result: "ok" });
+        }
+
+        const {
+            MerchantRequestID,
+            CheckoutRequestID,
+            ResultCode,
+            ResultDesc
+        } = callback;
+
+        console.log("📡 MERLIN DIGITAL CALLBACK:", {
+            MerchantRequestID,
+            CheckoutRequestID,
+            ResultCode,
+            ResultDesc
+        });
+
+        // Payment failed or cancelled
+        if (ResultCode !== 0) {
+            console.log(`❌ SHOP PAYMENT FAILED: ${ResultDesc}`);
+            return res.json({ result: "ok" });
+        }
+
+        // Payment successfully confirmed
+        console.log(`✅ SHOP PAYMENT CONFIRMED: ${CheckoutRequestID}`);
+
+        // Order validation/fulfilment will be connected here next.
+
+        return res.json({ result: "processed" });
+
+    } catch (error) {
+        console.error("❌ MERLIN DIGITAL CALLBACK ERROR:", error.message);
+        return res.json({ result: "error" });
+    }
+});
 
 // ============================================================================
 
