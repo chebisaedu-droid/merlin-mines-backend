@@ -421,7 +421,1441 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
         p2_paid: p2Ready
     });
 });
+// ============================================================================
+// 💎💎💎 MERLIN DIGITAL | POOL SIMULATIONS STORE
+// ============================================================================
+//
+// IMPORTANT:
+// This is a SEPARATE system from Merlin Mines.
+//
+// It does NOT modify:
+// - Merlin Mines matches
+// - dual-stk
+// - activeMatches
+// - combat callback
+// - game/end
+// - admin/matches
+// - admin/clear
+//
+// It only reuses the existing:
+// - PostgreSQL pool
+// - axios
+// - getMpesaToken()
+// - formatPhoneNumber()
+// - APP_URL
+//
+// ============================================================================
 
+
+// ============================================================================
+// 1. MERLIN DIGITAL PRODUCT CATALOGUE
+// ============================================================================
+//
+// IMPORTANT:
+// Prices are controlled by the BACKEND.
+// The frontend is NOT trusted to determine the amount.
+//
+// ============================================================================
+
+const merlinDigitalProducts = {
+
+    "game-1": {
+        name: "8-Ball Classic Pro",
+        price: 750
+    },
+
+    "game-2": {
+        name: "Neon Billiards Edition",
+        price: 1200
+    },
+
+    "game-3": {
+        name: "9-Ball Championship Sim",
+        price: 1500
+    },
+
+    "game-4": {
+        name: "Speed Pool Rush",
+        price: 600
+    },
+
+    "game-5": {
+        name: "Trickshot Masterclass VR",
+        price: 2000
+    },
+
+    "game-6": {
+        name: "Snooker Elite Club",
+        price: 1800
+    }
+
+};
+
+
+// ============================================================================
+// 2. MERLIN DIGITAL DATABASE TABLE
+// ============================================================================
+//
+// This creates the table automatically if it does not already exist.
+//
+// Your existing Merlin Mines tables are NOT modified.
+//
+// ============================================================================
+
+async function initializeMerlinDigitalDatabase() {
+
+    try {
+
+        await pool.query(`
+
+            CREATE TABLE IF NOT EXISTS merlin_orders (
+
+                id SERIAL PRIMARY KEY,
+
+                order_id VARCHAR(80)
+                    UNIQUE
+                    NOT NULL,
+
+                product_id VARCHAR(50)
+                    NOT NULL,
+
+                product_name VARCHAR(255)
+                    NOT NULL,
+
+                amount INTEGER
+                    NOT NULL,
+
+                phone VARCHAR(20)
+                    NOT NULL,
+
+                merchant_request_id VARCHAR(100),
+
+                checkout_request_id VARCHAR(100),
+
+                mpesa_receipt VARCHAR(100),
+
+                result_code INTEGER,
+
+                result_desc TEXT,
+
+                status VARCHAR(40)
+                    NOT NULL
+                    DEFAULT 'PENDING',
+
+                activation_code VARCHAR(100),
+
+                download_url TEXT,
+
+                created_at TIMESTAMP
+                    DEFAULT CURRENT_TIMESTAMP,
+
+                paid_at TIMESTAMP,
+
+                delivered_at TIMESTAMP
+
+            );
+
+        `);
+
+        console.log(
+            "✅ MERLIN DIGITAL DATABASE READY"
+        );
+
+    } catch (error) {
+
+        console.error(
+            "❌ MERLIN DIGITAL DATABASE INITIALIZATION FAILED:",
+            error.message
+        );
+
+    }
+
+}
+
+
+// ============================================================================
+// 3. CREATE DATABASE TABLE
+// ============================================================================
+
+initializeMerlinDigitalDatabase();
+
+
+// ============================================================================
+// 4. MERLIN DIGITAL — PRODUCT LIST
+// ============================================================================
+//
+// This allows the frontend to retrieve the official backend catalogue.
+//
+// ============================================================================
+
+app.get(
+    '/api/v1/merlin-digital/products',
+    (req, res) => {
+
+        try {
+
+            const products = Object.entries(
+                merlinDigitalProducts
+            ).map(([id, product]) => ({
+
+                productId: id,
+
+                name: product.name,
+
+                price: product.price
+
+            }));
+
+
+            res.json({
+
+                success: true,
+
+                products: products
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "MERLIN DIGITAL PRODUCTS ERROR:",
+                error.message
+            );
+
+
+            res.status(500).json({
+
+                success: false,
+
+                message: "Unable to load products."
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 5. MERLIN DIGITAL — CREATE ORDER + STK PUSH
+// ============================================================================
+//
+// Frontend sends:
+//
+// {
+//     productId: "game-1",
+//     phone: "0712345678"
+// }
+//
+// Backend determines the REAL price.
+//
+// ============================================================================
+
+app.post(
+    '/api/v1/merlin-digital/stk',
+    async (req, res) => {
+
+        const {
+            productId,
+            phone
+        } = req.body;
+
+
+        // --------------------------------------------------------------------
+        // VALIDATE PRODUCT
+        // --------------------------------------------------------------------
+
+        const product =
+            merlinDigitalProducts[productId];
+
+
+        if (!product) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Invalid Merlin Digital product."
+
+            });
+
+        }
+
+
+        // --------------------------------------------------------------------
+        // VALIDATE PHONE
+        // --------------------------------------------------------------------
+
+        if (!phone) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "M-Pesa phone number is required."
+
+            });
+
+        }
+
+
+        // --------------------------------------------------------------------
+        // USE EXISTING PHONE SANITIZER
+        // --------------------------------------------------------------------
+
+        const cleanPhone =
+            formatPhoneNumber(phone);
+
+
+        // Accept only Kenyan 07 / 01 mobile numbers
+        // after conversion to 254XXXXXXXXX.
+
+        if (
+            !/^254(7|1)\d{8}$/.test(cleanPhone)
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Invalid Kenyan mobile number."
+
+            });
+
+        }
+
+
+        // --------------------------------------------------------------------
+        // CREATE UNIQUE MERLIN DIGITAL ORDER
+        // --------------------------------------------------------------------
+
+        const orderId =
+            "MD-" +
+            Date.now() +
+            "-" +
+            Math.floor(
+                1000 + Math.random() * 9000
+            );
+
+
+        try {
+
+            // ----------------------------------------------------------------
+            // CREATE PENDING DATABASE ORDER
+            // ----------------------------------------------------------------
+
+            await pool.query(
+
+                `
+                INSERT INTO merlin_orders
+                (
+                    order_id,
+                    product_id,
+                    product_name,
+                    amount,
+                    phone,
+                    status
+                )
+                VALUES
+                (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    'PENDING'
+                )
+                `,
+
+                [
+                    orderId,
+                    productId,
+                    product.name,
+                    product.price,
+                    cleanPhone
+                ]
+
+            );
+
+
+            // ----------------------------------------------------------------
+            // GET EXISTING M-PESA TOKEN
+            // ----------------------------------------------------------------
+            //
+            // We deliberately reuse your existing function.
+            //
+            // No second authentication system.
+            //
+            // ----------------------------------------------------------------
+
+            const token =
+                await getMpesaToken();
+
+
+            // ----------------------------------------------------------------
+            // M-PESA CONFIGURATION
+            // ----------------------------------------------------------------
+            //
+            // Currently follows your existing SANDBOX setup.
+            //
+            // Replace these with your proper production values when moving
+            // to live Daraja.
+            //
+            // ----------------------------------------------------------------
+
+            const shortCode =
+                "174379";
+
+
+            const passkey =
+                "YOUR_SANDBOX_PASSKEY";
+
+
+            // ----------------------------------------------------------------
+            // TIMESTAMP
+            // ----------------------------------------------------------------
+
+            const timestamp =
+                new Date()
+                    .toISOString()
+                    .replace(/[^0-9]/g, '')
+                    .slice(0, 14);
+
+
+            // ----------------------------------------------------------------
+            // PASSWORD
+            // ----------------------------------------------------------------
+
+            const password =
+                Buffer
+                    .from(
+                        `${shortCode}${passkey}${timestamp}`
+                    )
+                    .toString('base64');
+
+
+            // ----------------------------------------------------------------
+            // MERLIN DIGITAL CALLBACK
+            // ----------------------------------------------------------------
+
+            const callbackUrl =
+                `${process.env.APP_URL}/api/v1/merlin-digital/callback`;
+
+
+            // ----------------------------------------------------------------
+            // STK PAYLOAD
+            // ----------------------------------------------------------------
+
+            const stkPayload = {
+
+                BusinessShortCode:
+                    shortCode,
+
+                Password:
+                    password,
+
+                Timestamp:
+                    timestamp,
+
+                TransactionType:
+                    "CustomerPayBillOnline",
+
+                Amount:
+                    product.price,
+
+                PartyA:
+                    cleanPhone,
+
+                PartyB:
+                    shortCode,
+
+                PhoneNumber:
+                    cleanPhone,
+
+                CallBackURL:
+                    callbackUrl,
+
+                AccountReference:
+                    orderId,
+
+                TransactionDesc:
+                    `Merlin Digital - ${product.name}`
+
+            };
+
+
+            console.log(
+                `💎 MERLIN DIGITAL STK: ${orderId} | ${product.name} | KES ${product.price} | ${cleanPhone}`
+            );
+
+
+            // ----------------------------------------------------------------
+            // SEND STK PUSH
+            // ----------------------------------------------------------------
+
+            const mpesaResponse =
+                await axios.post(
+
+                    'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+
+                    stkPayload,
+
+                    {
+
+                        headers: {
+
+                            Authorization:
+                                `Bearer ${token}`
+
+                        }
+
+                    }
+
+                );
+
+
+            // ----------------------------------------------------------------
+            // SAVE SAFARICOM REQUEST IDENTIFIERS
+            // ----------------------------------------------------------------
+
+            await pool.query(
+
+                `
+                UPDATE merlin_orders
+
+                SET
+                    merchant_request_id = $1,
+                    checkout_request_id = $2
+
+                WHERE order_id = $3
+                `,
+
+                [
+                    mpesaResponse.data.MerchantRequestID,
+                    mpesaResponse.data.CheckoutRequestID,
+                    orderId
+                ]
+
+            );
+
+
+            // ----------------------------------------------------------------
+            // RETURN SUCCESS TO FRONTEND
+            // ----------------------------------------------------------------
+
+            return res.json({
+
+                success: true,
+
+                orderId:
+                    orderId,
+
+                productId:
+                    productId,
+
+                productName:
+                    product.name,
+
+                amount:
+                    product.price,
+
+                checkoutRequestId:
+                    mpesaResponse.data.CheckoutRequestID,
+
+                message:
+                    "M-Pesa STK Push sent successfully."
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "❌ MERLIN DIGITAL STK FAILED:",
+                error.response
+                    ? error.response.data
+                    : error.message
+            );
+
+
+            // ----------------------------------------------------------------
+            // MARK ORDER AS STK_FAILED
+            // ----------------------------------------------------------------
+
+            try {
+
+                await pool.query(
+
+                    `
+                    UPDATE merlin_orders
+
+                    SET
+                        status = 'STK_FAILED',
+                        result_desc = $1
+
+                    WHERE order_id = $2
+                    `,
+
+                    [
+                        error.response
+                            ? JSON.stringify(
+                                error.response.data
+                            )
+                            : error.message,
+
+                        orderId
+                    ]
+
+                );
+
+            } catch (dbError) {
+
+                console.error(
+                    "❌ MERLIN ORDER FAILURE UPDATE FAILED:",
+                    dbError.message
+                );
+
+            }
+
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "M-Pesa STK Push could not be initiated.",
+
+                orderId:
+                    orderId
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 6. MERLIN DIGITAL — M-PESA CALLBACK
+// ============================================================================
+//
+// IMPORTANT:
+//
+// This is completely separate from:
+//
+// /api/v1/payment/callback
+//
+// That existing callback belongs to Merlin Mines.
+//
+// ============================================================================
+
+app.post(
+    '/api/v1/merlin-digital/callback',
+    async (req, res) => {
+
+        try {
+
+            console.log(
+                "📡 MERLIN DIGITAL CALLBACK RECEIVED"
+            );
+
+
+            // ----------------------------------------------------------------
+            // BASIC CALLBACK STRUCTURE VALIDATION
+            // ----------------------------------------------------------------
+
+            if (
+                !req.body ||
+                !req.body.Body ||
+                !req.body.Body.stkCallback
+            ) {
+
+                console.error(
+                    "❌ INVALID MERLIN CALLBACK STRUCTURE"
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            const callbackData =
+                req.body.Body.stkCallback;
+
+
+            const resultCode =
+                callbackData.ResultCode;
+
+
+            const resultDesc =
+                callbackData.ResultDesc;
+
+
+            const checkoutRequestId =
+                callbackData.CheckoutRequestID;
+
+
+            console.log(
+                `💎 MERLIN CALLBACK ID: ${checkoutRequestId} | RESULT: ${resultCode}`
+            );
+
+
+            // ----------------------------------------------------------------
+            // CALLBACK WITHOUT CHECKOUT ID
+            // ----------------------------------------------------------------
+
+            if (!checkoutRequestId) {
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            // ----------------------------------------------------------------
+            // FIND ORDER
+            // ----------------------------------------------------------------
+
+            const orderResult =
+                await pool.query(
+
+                    `
+                    SELECT *
+
+                    FROM merlin_orders
+
+                    WHERE checkout_request_id = $1
+
+                    LIMIT 1
+                    `,
+
+                    [
+                        checkoutRequestId
+                    ]
+
+                );
+
+
+            // ----------------------------------------------------------------
+            // ORDER NOT FOUND
+            // ----------------------------------------------------------------
+
+            if (
+                orderResult.rows.length === 0
+            ) {
+
+                console.error(
+                    `⚠️ MERLIN DIGITAL ORDER NOT FOUND: ${checkoutRequestId}`
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            const order =
+                orderResult.rows[0];
+
+
+            // ----------------------------------------------------------------
+            // PREVENT DOUBLE PROCESSING
+            // ----------------------------------------------------------------
+
+            if (
+                order.status === "PAID" ||
+                order.status === "DELIVERED"
+            ) {
+
+                console.log(
+                    `ℹ️ MERLIN ORDER ALREADY PROCESSED: ${order.order_id}`
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            // =================================================================
+            // PAYMENT FAILED / CANCELLED
+            // =================================================================
+
+            if (resultCode !== 0) {
+
+                await pool.query(
+
+                    `
+                    UPDATE merlin_orders
+
+                    SET
+                        status = 'FAILED',
+                        result_code = $1,
+                        result_desc = $2
+
+                    WHERE order_id = $3
+                    `,
+
+                    [
+                        resultCode,
+                        resultDesc,
+                        order.order_id
+                    ]
+
+                );
+
+
+                console.log(
+                    `❌ MERLIN DIGITAL PAYMENT FAILED: ${order.order_id} | ${resultDesc}`
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            // =================================================================
+            // PAYMENT SUCCESS
+            // =================================================================
+
+            const metadata =
+                callbackData.CallbackMetadata &&
+                callbackData.CallbackMetadata.Item
+                    ? callbackData.CallbackMetadata.Item
+                    : [];
+
+
+            let paidAmount = null;
+
+            let paidPhone = null;
+
+            let mpesaReceipt = null;
+
+
+            // ----------------------------------------------------------------
+            // READ CALLBACK METADATA
+            // ----------------------------------------------------------------
+
+            for (
+                const item of metadata
+            ) {
+
+                if (
+                    item.Name ===
+                    "Amount"
+                ) {
+
+                    paidAmount =
+                        item.Value;
+
+                }
+
+
+                if (
+                    item.Name ===
+                    "PhoneNumber"
+                ) {
+
+                    paidPhone =
+                        String(item.Value);
+
+                }
+
+
+                if (
+                    item.Name ===
+                    "MpesaReceiptNumber"
+                ) {
+
+                    mpesaReceipt =
+                        item.Value;
+
+                }
+
+            }
+
+
+            // =================================================================
+            // SECURITY VALIDATION 1 — AMOUNT
+            // =================================================================
+
+            if (
+                Number(paidAmount) !==
+                Number(order.amount)
+            ) {
+
+                console.error(
+                    `🚨 MERLIN AMOUNT MISMATCH: ${order.order_id} | Expected ${order.amount} | Received ${paidAmount}`
+                );
+
+
+                await pool.query(
+
+                    `
+                    UPDATE merlin_orders
+
+                    SET
+                        status = 'PAYMENT_MISMATCH',
+                        result_code = $1,
+                        result_desc = $2
+
+                    WHERE order_id = $3
+                    `,
+
+                    [
+                        resultCode,
+                        `Expected KES ${order.amount}, received KES ${paidAmount}`,
+                        order.order_id
+                    ]
+
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            // =================================================================
+            // SECURITY VALIDATION 2 — PHONE
+            // =================================================================
+
+            if (
+                paidPhone &&
+                String(paidPhone) !==
+                String(order.phone)
+            ) {
+
+                console.error(
+                    `🚨 MERLIN PHONE MISMATCH: ${order.order_id}`
+                );
+
+
+                await pool.query(
+
+                    `
+                    UPDATE merlin_orders
+
+                    SET
+                        status = 'PHONE_MISMATCH',
+                        result_code = $1,
+                        result_desc = $2
+
+                    WHERE order_id = $3
+                    `,
+
+                    [
+                        resultCode,
+                        "Payment phone did not match order phone.",
+                        order.order_id
+                    ]
+
+                );
+
+
+                return res.json({
+
+                    ResultCode: 0,
+
+                    ResultDesc: "Accepted"
+
+                });
+
+            }
+
+
+            // =================================================================
+            // PAYMENT VERIFIED
+            // =================================================================
+
+            await pool.query(
+
+                `
+                UPDATE merlin_orders
+
+                SET
+                    status = 'PAID',
+                    mpesa_receipt = $1,
+                    result_code = $2,
+                    result_desc = $3,
+                    paid_at = CURRENT_TIMESTAMP
+
+                WHERE order_id = $4
+                `,
+
+                [
+                    mpesaReceipt,
+                    resultCode,
+                    resultDesc,
+                    order.order_id
+                ]
+
+            );
+
+
+            console.log(
+                `✅ MERLIN DIGITAL PAYMENT VERIFIED: ${order.order_id} | ${order.product_name} | KES ${order.amount} | RECEIPT ${mpesaReceipt}`
+            );
+
+
+            // ----------------------------------------------------------------
+            // ACKNOWLEDGE CALLBACK
+            // ----------------------------------------------------------------
+
+            return res.json({
+
+                ResultCode: 0,
+
+                ResultDesc: "Accepted"
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "🔒 MERLIN DIGITAL CALLBACK ERROR:",
+                error.message
+            );
+
+
+            // Safaricom should receive an acknowledgement.
+            return res.json({
+
+                ResultCode: 0,
+
+                ResultDesc: "Accepted"
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 7. MERLIN DIGITAL — ORDER STATUS
+// ============================================================================
+//
+// Frontend uses this endpoint after STK Push.
+//
+// Possible statuses:
+//
+// PENDING
+// STK_FAILED
+// FAILED
+// PAYMENT_MISMATCH
+// PHONE_MISMATCH
+// PAID
+// DELIVERED
+//
+// ============================================================================
+
+app.get(
+    '/api/v1/merlin-digital/status/:orderId',
+    async (req, res) => {
+
+        try {
+
+            const {
+                orderId
+            } = req.params;
+
+
+            const result =
+                await pool.query(
+
+                    `
+                    SELECT
+                        order_id,
+                        product_id,
+                        product_name,
+                        amount,
+                        status,
+                        mpesa_receipt,
+                        activation_code,
+                        download_url,
+                        created_at,
+                        paid_at,
+                        delivered_at
+
+                    FROM merlin_orders
+
+                    WHERE order_id = $1
+
+                    LIMIT 1
+                    `,
+
+                    [
+                        orderId
+                    ]
+
+                );
+
+
+            if (
+                result.rows.length === 0
+            ) {
+
+                return res.status(404).json({
+
+                    success: false,
+
+                    message:
+                        "Order not found."
+
+                });
+
+            }
+
+
+            const order =
+                result.rows[0];
+
+
+            return res.json({
+
+                success: true,
+
+                orderId:
+                    order.order_id,
+
+                productId:
+                    order.product_id,
+
+                productName:
+                    order.product_name,
+
+                amount:
+                    order.amount,
+
+                status:
+                    order.status,
+
+                paid:
+                    order.status === "PAID" ||
+                    order.status === "DELIVERED",
+
+                receipt:
+                    order.mpesa_receipt ||
+                    null,
+
+                activationCode:
+                    order.activation_code ||
+                    null,
+
+                downloadUrl:
+                    order.download_url ||
+                    null,
+
+                createdAt:
+                    order.created_at,
+
+                paidAt:
+                    order.paid_at ||
+                    null,
+
+                deliveredAt:
+                    order.delivered_at ||
+                    null
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "❌ MERLIN DIGITAL STATUS ERROR:",
+                error.message
+            );
+
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "Unable to check payment status."
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 8. MERLIN DIGITAL — ADMIN ORDER LOOKUP
+// ============================================================================
+//
+// This is intentionally protected by your EXISTING admin middleware.
+//
+// No new authentication system.
+//
+// ============================================================================
+
+app.get(
+    '/api/v1/admin/merlin-digital/orders',
+    authenticateAdmin,
+    async (req, res) => {
+
+        try {
+
+            const result =
+                await pool.query(
+
+                    `
+                    SELECT
+                        id,
+                        order_id,
+                        product_id,
+                        product_name,
+                        amount,
+                        phone,
+                        merchant_request_id,
+                        checkout_request_id,
+                        mpesa_receipt,
+                        result_code,
+                        result_desc,
+                        status,
+                        activation_code,
+                        created_at,
+                        paid_at,
+                        delivered_at
+
+                    FROM merlin_orders
+
+                    ORDER BY created_at DESC
+
+                    LIMIT 500
+                    `
+
+                );
+
+
+            return res.json({
+
+                success: true,
+
+                orders:
+                    result.rows
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "❌ MERLIN DIGITAL ADMIN ERROR:",
+                error.message
+            );
+
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "Unable to retrieve Merlin Digital orders."
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 9. MERLIN DIGITAL — ADMIN SINGLE ORDER
+// ============================================================================
+
+app.get(
+    '/api/v1/admin/merlin-digital/order/:orderId',
+    authenticateAdmin,
+    async (req, res) => {
+
+        try {
+
+            const {
+                orderId
+            } = req.params;
+
+
+            const result =
+                await pool.query(
+
+                    `
+                    SELECT *
+
+                    FROM merlin_orders
+
+                    WHERE order_id = $1
+
+                    LIMIT 1
+                    `,
+
+                    [
+                        orderId
+                    ]
+
+                );
+
+
+            if (
+                result.rows.length === 0
+            ) {
+
+                return res.status(404).json({
+
+                    success: false,
+
+                    message:
+                        "Merlin Digital order not found."
+
+                });
+
+            }
+
+
+            return res.json({
+
+                success: true,
+
+                order:
+                    result.rows[0]
+
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "❌ MERLIN DIGITAL ORDER LOOKUP ERROR:",
+                error.message
+            );
+
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "Unable to retrieve order."
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 10. MERLIN DIGITAL — SYSTEM HEALTH
+// ============================================================================
+
+app.get(
+    '/api/v1/merlin-digital/health',
+    async (req, res) => {
+
+        try {
+
+            await pool.query(
+                'SELECT 1'
+            );
+
+
+            return res.json({
+
+                success: true,
+
+                system:
+                    "MERLIN DIGITAL",
+
+                database:
+                    "ONLINE",
+
+                paymentEngine:
+                    "READY",
+
+                timestamp:
+                    new Date().toISOString()
+
+            });
+
+
+        } catch (error) {
+
+            return res.status(500).json({
+
+                success: false,
+
+                system:
+                    "MERLIN DIGITAL",
+
+                database:
+                    "OFFLINE"
+
+            });
+
+        }
+
+    }
+);
+
+
+// ============================================================================
+// 💎 END OF MERLIN DIGITAL MODULE
+// ============================================================================
+
+
+// ============================================================================
 
 // ----------------------------------------------------------------
 // 5. SERVER START
