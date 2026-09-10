@@ -175,7 +175,7 @@ try {
   const token = await getMpesaToken();
 
   // Production Paybill credentials pulled securely from process.env
-  const shortCode = process.env.MPESA_SHORTCODE; // Your Paybill Number
+  const shortCode = process.env.MPESA_SHORTCODE; // Your till Number
   const passkey = process.env.MPESA_PASSKEY;
 
   // Inline Timestamp Generation (Format: YYYYMMDDHHmmss)
@@ -183,41 +183,49 @@ try {
   const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
   const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
 
-  // 2. Define the STK Payload Builder
-  const createStkPayload = (phone) => ({
-    BusinessShortCode: shortCode,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: "CustomerBuyGoodsOnline", // 🎯 Correct type for Paybill
-    Amount: stakeAmount,
-    PartyA: phone, 
-    PartyB: shortCode,                        // 🎯 For Paybill, PartyB is the Paybill shortcode
-    PhoneNumber: phone, 
-    CallBackURL: callbackUrl,
-    AccountReference: "KAPLANCE DIGITAL",            // Sent as the account number on the user's phone prompt
-    TransactionDesc: "DEVELOPERS TICKET"
-  });
+// 2. Define the STK Payload Builder
+const createStkPayload = (phone) => ({
+  BusinessShortCode: shortCode,
+  Password: password,
+  Timestamp: timestamp,
+  TransactionType: "CustomerBuyGoodsOnline",
+  Amount: stakeAmount,
+  PartyA: phone,
+  PartyB: shortCode,
+  PhoneNumber: phone,
+  CallBackURL: callbackUrl,
+  AccountReference: "KAPLANCE DIGITAL",
+  TransactionDesc: "DEVELOPERS TICKET"
+});
 
-  // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints with Timeout Protection)
-  const [p1Response, p2Response] = await Promise.all([ 
-    axios.post('https://api.safaricom.co.ke', createStkPayload(p1Phone), {
-      headers: { 
+// 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints)
+const [p1Response, p2Response] = await Promise.all([
+  axios.post(
+    'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+    createStkPayload(p1Phone),
+    {
+      headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-     
-    }),
-    axios.post('https://api.safaricom.co.ke', createStkPayload(p2Phone), {
-      headers: { 
+      }
+    }
+  ),
+
+  axios.post(
+    'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+    createStkPayload(p2Phone),
+    {
+      headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      },
-    
-    })
-  ]);
-
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
+      }
+    }
+  )
+]);
+```
+ 
     
   // 4. Create Match ID
   const matchId = "MATCH_" + Date.now();
