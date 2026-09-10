@@ -169,137 +169,132 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
     const totalPot = stake * 2;
     const houseFee = totalPot * 0.20; // 20%
     const winnerPayout = totalPot * 0.80; // 80%
+// 🔐 STEP 3: PREPARE MPESA CONFIG (LIVE PRODUCTION ENV)
+try {
+  const token = await getMpesaToken();
 
-    // 🔐 STEP 3: PREPARE MPESA CONFIG (HARDCODED NUCLEAR FIX)
-    // We bypass process.env to eliminate variable errors
-    try {
-        const token = await getMpesaToken();
-        
-        // ⚠️ HARDCODED SANDBOX VALUES (This Fixes "Wrong Credentials")
-        const shortCode = "174379"; 
-        const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
-        
-        // Inline Timestamp Generation (To ensure format is YYYYMMDDHHmmss)
-        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-        
-        const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-        const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+  // Production Paybill credentials pulled securely from process.env
+  const shortCode = process.env.MPESA_SHORTCODE; // Your Paybill Number
+  const passkey = process.env.MPESA_PASSKEY;
 
-        // 2. Define the STK Payload Builder
-        const createStkPayload = (phone) => ({
-            BusinessShortCode: shortCode,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline",
-            Amount: stakeAmount,
-            PartyA: phone,            // <--- USES CLEAN PHONE
-            PartyB: shortCode,
-            PhoneNumber: phone,       // <--- USES CLEAN PHONE
-            CallBackURL: callbackUrl,
-            AccountReference: "MERLIN_VS",
-            TransactionDesc: "Combat Stake"
-        });
+  // Inline Timestamp Generation (Format: YYYYMMDDHHmmss)
+  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+  const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
 
-        // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        const [p1Response, p2Response] = await Promise.all([
-            axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } }),
-            axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
-        ]);
+  // 2. Define the STK Payload Builder
+  const createStkPayload = (phone) => ({
+    BusinessShortCode: shortCode,
+    Password: password,
+    Timestamp: timestamp,
+    TransactionType: "CustomerPayBillOnline", // 🎯 Correct type for Paybill
+    Amount: stakeAmount,
+    PartyA: phone, 
+    PartyB: shortCode,                        // 🎯 For Paybill, PartyB is the Paybill shortcode
+    PhoneNumber: phone, 
+    CallBackURL: callbackUrl,
+    AccountReference: "KAPLANCE DIGITAL",            // Sent as the account number on the user's phone prompt
+    TransactionDesc: "DEVELOPERS TICKET"
+  });
 
-        // 4. Create Match ID
-        const matchId = "MATCH_" + Date.now();
-        
-        // 5. SAVE TO DB (With Tier Info & Clean Phones)
-        activeMatches.set(matchId, {
-            status: "PENDING",
-            tier: tier,               
-            payout: winnerPayout,     
-            revenue: houseFee,        
-            p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID }, 
-            p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID }, 
-            stake: stakeAmount,
-            winner: null
-        });
+  // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints)
+  const [p1Response, p2Response] = await Promise.all([
+    axios.post('https://safaricom.co.ke', createStkPayload(p1Phone), {
+      headers: { Authorization: `Bearer ${token}` }
+    }),
+    axios.post('https://safaricom.co.ke', createStkPayload(p2Phone), {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+  ]);
 
-        res.json({ success: true, matchId: matchId, message: "Tiered Match Initiated" });
+  // 4. Create Match ID
+  const matchId = "MATCH_" + Date.now();
 
-    } catch (error) {
-        console.error("STK Fail:", error.response ? error.response.data : error.message);
-        // Even if Safaricom fails, we return 500 so the frontend knows
-        res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
-    }
+  // 5. SAVE TO DB (With Tier Info & Clean Phones)
+  activeMatches.set(matchId, {
+    status: "PENDING",
+    tier: tier,
+    payout: winnerPayout,
+    revenue: houseFee,
+    p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID },
+    p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID },
+    stake: stakeAmount,
+    winner: null
+  });
+
+  res.json({ success: true, matchId: matchId, message: "Tiered Match Initiated" });
+
+} catch (error) {
+  console.error("STK Fail:", error.response ? error.response.data : error.message);
+  res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
+}
 });
-// =================================================================
-// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)
-// =================================================================
+
+// ================================================================= //
+// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)   //
+// ================================================================= //
 app.post('/api/v1/payment/callback', (req, res) => {
-    try {
-        const callbackData = req.body.Body.stkCallback;
-        const resultCode = callbackData.ResultCode; // 0 = Success
-        const incomingCheckoutId = callbackData.CheckoutRequestID; // 🎯 SAFARICOM'S UNIQUE KEY
+try {
+  const callbackData = req.body.Body.stkCallback;
+  const resultCode = callbackData.ResultCode; // 0 = Success
+  const incomingCheckoutId = callbackData.CheckoutRequestID; 
 
-        // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
-        if (resultCode !== 0) {
-            console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
-            return res.json({ result: "ok" });
-        }
+  // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
+  if (resultCode !== 0) {
+    console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
+    return res.json({ result: "ok" });
+  }
 
-        if (!incomingCheckoutId) {
-            console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
-            return res.json({ result: "ok" });
-        }
+  if (!incomingCheckoutId) {
+    console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
+    return res.json({ result: "ok" });
+  }
 
-        console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
+  console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
+  let matchFound = false;
 
-        let matchFound = false;
+  // 3. SCAN SYSTEM RECORDS BY UNIQUE CHECKOUT ID (Preserves Object Structure)
+  for (const [matchId, match] of activeMatches.entries()) {
+    if (match.status === "READY_TO_FIGHT") continue;
 
-        // 3. SCAN SYSTEM RECORDS BY UNIQUE CHECKOUT ID (Preserves Object Structure)
-        for (const [matchId, match] of activeMatches.entries()) {
-            
-            // Skip matches that are already cleared or closed
-            if (match.status === "READY_TO_FIGHT") continue;
+    let matchUpdated = false;
 
-            let matchUpdated = false;
-
-            // 🎯 SECURE CHECK: Match strictly by Safaricom Transaction ID, not just phone number
-            if (match.p1.reqId === incomingCheckoutId && !match.p1.paid) {
-                match.p1.paid = true;
-                matchUpdated = true;
-                matchFound = true;
-                console.log(`✅ MATCH [${matchId}]: Player 1 VERIFIED PAID via CheckoutID.`);
-            }
-            
-            if (match.p2.reqId === incomingCheckoutId && !match.p2.paid) {
-                match.p2.paid = true;
-                matchUpdated = true;
-                matchFound = true;
-                console.log(`✅ MATCH [${matchId}]: Player 2 VERIFIED PAID via CheckoutID.`);
-            }
-
-            // 4. TRANSACTION GATE EVALUATION
-            if (matchUpdated) {
-                // Sockets remain completely untouched; your status variables shift normally
-                if (match.p1.paid && match.p2.paid) {
-                    match.status = "READY_TO_FIGHT"; 
-                    console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
-                }
-                
-                activeMatches.set(matchId, match); // Save Updates
-            }
-        }
-
-        if (!matchFound) {
-            console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
-        }
-
-        res.json({ result: "processed" });
-
-    } catch (error) {
-        console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
-        res.json({ result: "error" });
+    if (match.p1.reqId === incomingCheckoutId && !match.p1.paid) {
+      match.p1.paid = true;
+      matchUpdated = true;
+      matchFound = true;
+      console.log(`✅ MATCH [${matchId}]: Player 1 VERIFIED PAID via CheckoutID.`);
     }
+    if (match.p2.reqId === incomingCheckoutId && !match.p2.paid) {
+      match.p2.paid = true;
+      matchUpdated = true;
+      matchFound = true;
+      console.log(`✅ MATCH [${matchId}]: Player 2 VERIFIED PAID via CheckoutID.`);
+    }
+
+    // 4. TRANSACTION GATE EVALUATION
+    if (matchUpdated) {
+      if (match.p1.paid && match.p2.paid) {
+        match.status = "READY_TO_FIGHT";
+        console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
+      }
+      activeMatches.set(matchId, match); 
+    }
+  }
+
+  if (!matchFound) {
+    console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
+  }
+
+  res.json({ result: "processed" });
+
+} catch (error) {
+  console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
+  res.json({ result: "error" });
+}
 });
 
+  
 
 // =================================================================
 // ➤ ADMIN DASHBOARD 
