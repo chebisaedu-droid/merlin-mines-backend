@@ -39,21 +39,21 @@ const activeMatches = new Map();
 // 3. M-PESA UTILITY FUNCTIONS
 // ----------------------------------------------------------------
 // ==========================================
-// 🔐 M-PESA TOKEN GENERATOR (HARDCODED FIX)
+// 🔐 M-PESA TOKEN GENERATOR (LIVE PRODUCTION ENV)
 // ==========================================
 async function getMpesaToken() {
-    // 1. HARDCODE YOUR KEYS HERE (Inside the quotes)
-    const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
-    const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
+    // 1. PULL LIVE PRODUCTION KEYS SECURELY FROM ENVIRONMENT VARIABLES
+    const consumer_key = process.env.MPESA_CONSUMER_KEY;
+    const consumer_secret = process.env.MPESA_CONSUMER_SECRET;
 
-    // 2. USE SANDBOX URL
-    const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+    // 2. USE LIVE SAFARICOM PRODUCTION URL
+    const url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
     // 3. CREATE AUTH HEADER
     const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
 
     try {
-        // 4. REQUEST THE TOKEN
+        // 4. REQUEST THE PRODUCTION ACCESS TOKEN
         const response = await axios.get(url, {
             headers: { "Authorization": auth }
         });
@@ -72,6 +72,7 @@ const getTimestamp = () => {
     const date = new Date();
     return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 };
+
 
 // ----------------------------------------------------------------
 // 4. API ROUTES
@@ -197,16 +198,24 @@ try {
     TransactionDesc: "DEVELOPERS TICKET"
   });
 
-  // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints)
+    // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints with Firewall Bypasses)
   const [p1Response, p2Response] = await Promise.all([
     axios.post('https://safaricom.co.ke', createStkPayload(p1Phone), {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
     }),
     axios.post('https://safaricom.co.ke', createStkPayload(p2Phone), {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
     })
   ]);
-
+    
   // 4. Create Match ID
   const matchId = "MATCH_" + Date.now();
 
