@@ -188,7 +188,7 @@ try {
     BusinessShortCode: shortCode,
     Password: password,
     Timestamp: timestamp,
-    TransactionType: "CustomerPayBillOnline", // 🎯 Correct type for Paybill
+    TransactionType: "CustomerBuyGoodsOnline", // 🎯 Correct type for Paybill
     Amount: stakeAmount,
     PartyA: phone, 
     PartyB: shortCode,                        // 🎯 For Paybill, PartyB is the Paybill shortcode
