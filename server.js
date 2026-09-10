@@ -199,22 +199,22 @@ try {
   });
 
   // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints with Timeout Protection)
-  const [p1Response, p2Response] = await Promise.all([
-    axios.post('https://safaricom.co.ke', createStkPayload(p1Phone), {
+  const [p1Response, p2Response] = await Promise.all([ 
+    axios.post('https://api.safaricom.co.ke'/oauth/v1/generate?grant_type=client_credentials, createStkPayload(p1Phone), {
       headers: { 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
-      timeout: 10000 // ⏱️ Forces a response fail if Safaricom hangs for more than 10 seconds
+     
     }),
-    axios.post('https://safaricom.co.ke', createStkPayload(p2Phone), {
+    axios.post('https://api.safaricom.co.ke'/oauth/v1/generate?grant_type=client_credentials, createStkPayload(p2Phone), {
       headers: { 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
-      timeout: 10000 // ⏱️ Forces a response fail if Safaricom hangs for more than 10 seconds
+    
     })
   ]);
 
