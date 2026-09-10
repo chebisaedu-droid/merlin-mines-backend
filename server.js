@@ -200,7 +200,7 @@ try {
 
   // 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints with Timeout Protection)
   const [p1Response, p2Response] = await Promise.all([ 
-    axios.post('https://api.safaricom.co.ke'/, createStkPayload(p1Phone), {
+    axios.post('https://api.safaricom.co.ke', createStkPayload(p1Phone), {
       headers: { 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -208,7 +208,7 @@ try {
       },
      
     }),
-    axios.post('https://api.safaricom.co.ke'/, createStkPayload(p2Phone), {
+    axios.post('https://api.safaricom.co.ke', createStkPayload(p2Phone), {
       headers: { 
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
