@@ -185,13 +185,13 @@ try {
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-  BusinessShortCode: shortCode,
+  BusinessShortCode: 4441433,
   Password: password,
   Timestamp: timestamp,
   TransactionType: "CustomerBuyGoodsOnline",
   Amount: stakeAmount,
   PartyA: phone,
-  PartyB: shortCode,
+  PartyB: 4441433,
   PhoneNumber: phone,
   CallBackURL: callbackUrl,
   AccountReference: "KAPLANCE DIGITAL",
