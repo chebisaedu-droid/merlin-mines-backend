@@ -178,10 +178,27 @@ try {
   const ShortCode = process.env.MPESA_SHORTCODE; 
   const passkey = process.env.MPESA_PASSKEY;
 
-  // Inline Timestamp Generation (Format: YYYYMMDDHHmmss)
-  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  // 1. Generate local timestamp safely using Intl.DateTimeFormat (Forces YYYYMMDDHHmmss format in local time)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Nairobi', // Forces East Africa Time to match Safaricom perfectly
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  });
+  
+  const parts = formatter.formatToParts(new Date());
+  const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const timestamp = `${p.year}${p.month}${p.day}${p.hour}${p.minute}${p.second}`;
+
+  // 2. Add an explicit check to make sure your keys are not empty
+  if (!ShortCode || !passkey) {
+    console.error("❌ ERROR: ShortCode or Passkey is missing from your environment variables!");
+  }
+
+  // 3. Generate password
   const password = Buffer.from(`${ShortCode}${passkey}${timestamp}`).toString('base64');
   const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+
+  // Debug line to doubl 
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
