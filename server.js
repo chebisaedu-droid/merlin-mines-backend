@@ -198,7 +198,7 @@ const createStkPayload = (phone) => ({
   TransactionDesc: "DEVELOPERS TICKET"
 });
 // ==========================================
-// 🛠️ FIXED: SEQUENTIAL EXECUTION TO BYPASS SAFARICOM LIVE REPLAY PROTECTION
+// 🛠️ FIXED: SEQUENTIAL EXECUTION
 // ==========================================
 
 // 1. Dispatch the first phone request packet cleanly
@@ -213,6 +213,9 @@ const p1Response = await axios.post(
     }
   }
 );
+
+// 2. Pause execution for 25 seconds to give Player 1 time to complete PIN entry
+await new Promise(resolve => setTimeout(resolve, 25000));
 
 // 3. Dispatch the second phone request packet safely
 const p2Response = await axios.post(
