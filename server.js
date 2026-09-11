@@ -198,8 +198,6 @@ try {
   const password = Buffer.from(`${ShortCode}${passkey}${timestamp}`).toString('base64');
   const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
 
-  // Debug line to doubl 
-
 // =================================================================
 // 📲 FINE-TUNED & HARDENED STK PAYLOAD BUILDER (NO CODE DROP)
 // =================================================================
@@ -211,14 +209,19 @@ const createStkPayload = (phone, playerLabel) => {
   
   // Dynamically hash the signature using the precise current timestamp
   const livePassword = Buffer.from(
-    `${ShortCode}${ MPESAPASSKEY}${liveTimestamp}`
+    `${ShortCode}${MPESAPASSKEY}${liveTimestamp}`
   ).toString('base64');
 
   return {
-    "BusinessShortCode": ShortCode, // Your live Till Number variable
+    "BusinessShortCode": ShortCode, // Your live Shortcode variable
     "Password": livePassword,       // Dynamically computed signature
     "Timestamp": liveTimestamp,     // Dynamically computed time token
-    "TransactionType": "CustomerBuyGoodsOnline",
+    
+    // 🩺 PRODUCTION SURGERY: Set this dynamically depending on your account setup
+    // Use "CustomerPayBillOnline" if you use a Live Paybill.
+    // Use "CustomerBuyGoodsOnline" if you use a Live Till Number (Buy Goods).
+    "TransactionType": "CustomerPayBillOnline", 
+    
     "Amount": stakeAmount,
     "PartyA": phone,
     "PartyB": ShortCode,            // 🛡️ FIXED: Must match BusinessShortCode perfectly
@@ -227,7 +230,7 @@ const createStkPayload = (phone, playerLabel) => {
     
     // 🧼 METADATA CLEANUP: Clean alphanumeric identifiers under 12 characters (no spaces)
     "AccountReference": `KPL_${playerLabel}`,      // 🟢 Outputs clean tracking tag e.g., "KPL_P1"
-    "TransactionDesc": "PlatformAccessTicket" // 🟢 Clean, safe string under hard limit
+    "TransactionDesc": "PlatformAccess"            // 🟢 Clean, safe string under hard limit
   };
 };
 
@@ -235,44 +238,45 @@ const createStkPayload = (phone, playerLabel) => {
 // 🛠️ EXECUTION PIPELINE
 // =================================================================
 
-// 1. Dispatch the first phone request packet cleanly
-const p1Response = await axios.post(
-  'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-  createStkPayload(p1Phone, "P1"), // Passes unique tracking key
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+try {
+  // 1. Dispatch the first phone request packet cleanly
+  const p1Response = await axios.post(
+    'https://safaricom.co.ke',
+    createStkPayload(p1Phone, "P1"), // Passes unique tracking key
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+        // 🩺 REMOVED SPOOFED USER AGENT: Safaricom Gateway blocks client desktop strings from server microservices
+      }
     }
-  }
-);
+  );
 
-console.log("📲 Player 1 Push Successfully Sent. Request ID:", p1Response.data.CheckoutRequestID);
+  console.log("📲 Player 1 Push Successfully Sent. Request ID:", p1Response.data.CheckoutRequestID);
 
-// 2. Pause execution for 25 seconds to give Player 1 time to complete PIN entry
-await new Promise(resolve => setTimeout(resolve, 25000));
+  // ⚠️ ARCHITECTURAL ALERT: A 25-second hard delay (setTimeout) inside an HTTP route handler 
+  // can trigger gateway timeouts (504 Errors) on production servers (Nginx/AWS/Heroku hit limits at 30s).
+  // Consider running this execution pattern inside an asynchronous queue/worker background routine if it causes freezes.
+  await new Promise(resolve => setTimeout(resolve, 25000));
 
-// 3. Dispatch the second phone request packet safely
-const p2Response = await axios.post(
-  'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-  createStkPayload(p2Phone, "P2"), // Passes unique tracking key and calculates fresh time signature
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  // 3. Dispatch the second phone request packet safely
+  const p2Response = await axios.post(
+    'https://safaricom.co.ke',
+    createStkPayload(p2Phone, "P2"), // Passes unique tracking key and calculates fresh time signature
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     }
-  }
-);
+  );
 
-console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data.CheckoutRequestID);
+  console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data.CheckoutRequestID);
 
-    
   // 4. Create Match ID
   const matchId = "MATCH_" + Date.now();
 
-  // 5. SAVE TO DB (With Tier Info & Clean Phones)
+  // 5. SAVE TO MEMORY MAP
   activeMatches.set(matchId, {
     status: "PENDING",
     tier: tier,
@@ -284,13 +288,18 @@ console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data
     winner: null
   });
 
+  // 🩺 ERROR 2002 REPAIR NOTE: 
+  // If your script has database drivers (Sequelize, MySQL2 pools, or Knex) connected to this file 
+  // to back up `activeMatches` right after this step, confirm your production database host isn't set to localhost.
+
   res.json({ success: true, matchId: matchId, message: "Tiered Match Initiated" });
 
 } catch (error) {
   console.error("STK Fail:", error.response ? error.response.data : error.message);
   res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
 }
-});
+
+
 
 // ================================================================= //
 // ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)   //
