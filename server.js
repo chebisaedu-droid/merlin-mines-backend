@@ -175,23 +175,23 @@ try {
   const token = await getMpesaToken();
 
   // Production Paybill credentials pulled securely from process.env
-  const shortCode = process.env.MPESA_SHORTCODE; // Your till Number
+  const ShortCode = process.env.MPESA_SHORTCODE; // Your till Number
   const passkey = process.env.MPESA_PASSKEY;
 
   // Inline Timestamp Generation (Format: YYYYMMDDHHmmss)
   const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-  const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+  const password = Buffer.from(`${ShortCode}${passkey}${timestamp}`).toString('base64');
   const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-  BusinessShortCode: shortCode,
+  BusinessShortCode: ShortCode,
   Password: password,
   Timestamp: timestamp,
   TransactionType: "CustomerBuyGoodsOnline",
   Amount: stakeAmount,
   PartyA: phone,
-  PartyB: shortcode,
+  PartyB: ShortCode,
   PhoneNumber: phone,
   CallBackURL: callbackUrl,
   AccountReference: "KAPLANCE DIGITAL",
