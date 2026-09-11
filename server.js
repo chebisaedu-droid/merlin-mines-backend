@@ -297,8 +297,8 @@ try {
 } catch (error) {
   console.error("STK Fail:", error.response ? error.response.data : error.message);
   res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
-}
-}); // 👈
+
+});//
 
 
 
