@@ -185,13 +185,13 @@ try {
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-  BusinessShortCode: 4441433,
+  BusinessShortCode: shortcode,
   Password: password,
   Timestamp: timestamp,
   TransactionType: "CustomerBuyGoodsOnline",
   Amount: stakeAmount,
   PartyA: phone,
-  PartyB: 4441433,
+  PartyB: shortcode,
   PhoneNumber: phone,
   CallBackURL: callbackUrl,
   AccountReference: "KAPLANCE DIGITAL",
@@ -213,9 +213,6 @@ const p1Response = await axios.post(
     }
   }
 );
-
-// 2. Introduce a quick 800ms buffer break to satisfy Safaricom's concurrency timeline filters
-await new Promise(resolve => setTimeout(resolve, 800));
 
 // 3. Dispatch the second phone request packet safely
 const p2Response = await axios.post(
