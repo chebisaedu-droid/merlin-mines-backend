@@ -197,35 +197,39 @@ const createStkPayload = (phone) => ({
   AccountReference: "KAPLANCE DIGITAL",
   TransactionDesc: "DEVELOPERS TICKET"
 });
+// ==========================================
+// 🛠️ FIXED: SEQUENTIAL EXECUTION TO BYPASS SAFARICOM LIVE REPLAY PROTECTION
+// ==========================================
 
-// 3. FIRE DUAL REQUESTS (Parallel Execution - Production Endpoints)
-const [p1Response, p2Response] = await Promise.all([
-  axios.post(
-    'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-    createStkPayload(p1Phone),
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+// 1. Dispatch the first phone request packet cleanly
+const p1Response = await axios.post(
+  'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+  createStkPayload(p1Phone),
+  {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-  ),
+  }
+);
 
-  axios.post(
-    'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-    createStkPayload(p2Phone),
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
-      }
+// 2. Introduce a quick 800ms buffer break to satisfy Safaricom's concurrency timeline filters
+await new Promise(resolve => setTimeout(resolve, 800));
+
+// 3. Dispatch the second phone request packet safely
+const p2Response = await axios.post(
+  'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+  createStkPayload(p2Phone),
+  {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
-  )
-]);
-```
- 
+  }
+);
+
     
   // 4. Create Match ID
   const matchId = "MATCH_" + Date.now();
