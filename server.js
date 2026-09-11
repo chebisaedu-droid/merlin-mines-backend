@@ -174,8 +174,8 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
 try {
   const token = await getMpesaToken();
 
-  // Production Paybill credentials pulled securely from process.env
-  const ShortCode = process.env.MPESA_SHORTCODE; // Your till Number
+  
+  const ShortCode = process.env.MPESA_SHORTCODE; 
   const passkey = process.env.MPESA_PASSKEY;
 
   // Inline Timestamp Generation (Format: YYYYMMDDHHmmss)
@@ -191,7 +191,7 @@ const createStkPayload = (phone) => ({
   TransactionType: "CustomerBuyGoodsOnline",
   Amount: stakeAmount,
   PartyA: phone,
-  PartyB: ShortCode,
+  PartyB: 4441433,
   PhoneNumber: phone,
   CallBackURL: callbackUrl,
   AccountReference: "KAPLANCE DIGITAL",
