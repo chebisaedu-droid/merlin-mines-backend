@@ -185,7 +185,7 @@ try {
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-  BusinessShortCode: shortcode,
+  BusinessShortCode: shortCode,
   Password: password,
   Timestamp: timestamp,
   TransactionType: "CustomerBuyGoodsOnline",
