@@ -6,7 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
-const axios = require('axios'); // Requires: npm install axios
+const axios = require('axios');
 
 const app = express();
 app.use(express.json());
@@ -17,7 +17,7 @@ app.use(cors());
 // ----------------------------------------------------------------
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Railway
+    ssl: { rejectUnauthorized: false } // Required for production hosts like Railway
 });
 
 // ----------------------------------------------------------------
@@ -38,41 +38,43 @@ const activeMatches = new Map();
 // ----------------------------------------------------------------
 // 3. M-PESA UTILITY FUNCTIONS
 // ----------------------------------------------------------------
-// ==========================================
-// 🔐 M-PESA TOKEN GENERATOR (LIVE PRODUCTION ENV)
-// ==========================================
+
+// 🧼 PHONE SANITIZER HELPER
+const formatPhoneNumber = (phone) => {
+    let cleaned = phone.toString().replace(/\D/g, '');
+
+    if (cleaned.startsWith('0')) {
+        cleaned = '254' + cleaned.substring(1);
+    }
+    
+    if (cleaned.length === 9) {
+        cleaned = '254' + cleaned;
+    }
+
+    return cleaned;
+};
+
+// 🔐 M-PESA TOKEN GENERATOR (LIVE PRODUCTION GATEWAY API)
 async function getMpesaToken() {
-    // 1. PULL LIVE PRODUCTION KEYS SECURELY FROM ENVIRONMENT VARIABLES
     const consumer_key = process.env.MPESA_CONSUMER_KEY;
     const consumer_secret = process.env.MPESA_CONSUMER_SECRET;
 
-    // 2. USE LIVE SAFARICOM PRODUCTION URL
-    const url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-
-    // 3. CREATE AUTH HEADER
+    // 🟢 PRODUCTION API ENDPOINT
+    const url = 'https://api.safaricom.co.ke';
     const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
 
     try {
-        // 4. REQUEST THE PRODUCTION ACCESS TOKEN
         const response = await axios.get(url, {
             headers: { "Authorization": auth }
         });
 
-        console.log("✅ TOKEN GENERATED:", response.data.access_token);
+        console.log("✅ LIVE PRODUCTION TOKEN GENERATED SUCCESFULLY");
         return response.data.access_token;
-
     } catch (error) {
-        console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
+        console.error("❌ M-PESA OAUTH API TRANSACTION FAILED:", error.response ? error.response.data : error.message);
         throw error;
     }
 }
-
-
-const getTimestamp = () => {
-    const date = new Date();
-    return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-};
-
 
 // ----------------------------------------------------------------
 // 4. API ROUTES
@@ -87,7 +89,6 @@ app.post('/api/v1/auth/forgot-password', async (req, res) => {
     if (!email) return res.status(400).json({ success: false, message: "Email required" });
 
     try {
-        // Check DB for user
         const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()]);
         if (userCheck.rows.length === 0) return res.status(404).json({ success: false, message: "Email not found" });
 
@@ -124,182 +125,112 @@ app.post('/api/v1/auth/reset-password', async (req, res) => {
         res.status(500).json({ success: false, message: "DB Update Failed" });
     }
 });
-// 🧹 PHONE SANITIZER HELPER
-const formatPhoneNumber = (phone) => {
-    // 1. Remove any spaces, plus signs, or special characters
-    let cleaned = phone.toString().replace(/\D/g, '');
 
-    // 2. If it starts with '0', replace with '254' (e.g., 0712 -> 254712)
-    if (cleaned.startsWith('0')) {
-        cleaned = '254' + cleaned.substring(1);
-    }
-    
-    // 3. If it starts with '7' or '1', add '254' (e.g., 712 -> 254712)
-    if (cleaned.length === 9) {
-        cleaned = '254' + cleaned;
-    }
+// ➤ STK: MATCH INITIALIZATION ROUTE
+app.post('/api/v1/match/initiate', async (req, res) => {
+    try {
+        const { p1Phone: rawP1, p2Phone: rawP2, tier, stakeAmount, winnerPayout, houseFee } = req.body;
 
-    return cleaned;
-};
+        const p1Phone = formatPhoneNumber(rawP1);
+        const p2Phone = formatPhoneNumber(rawP2);
 
-// ➤ PAYMENT: DUAL STK PUSH (The Combat Engine - Nuclear Fix)
-app.post('/api/v1/payment/dual-stk', async (req, res) => {
-    const { player1, player2, stakeAmount } = req.body;
+        // Fetch production token
+        const token = await getMpesaToken();
 
-    // 🧹 STEP 1: SANITIZE INPUTS (Auto-Correct)
-    // Even if they typed "0722...", this converts it to "254722..."
-    const p1Phone = formatPhoneNumber(player1.phone);
-    const p2Phone = formatPhoneNumber(player2.phone);
+        // Extract production keys from Railway dashboard environment configurations
+        const shortCode = process.env.MPESA_SHORTCODE;
+        const passkey = process.env.MPESAPASSKEY;
+        
+        // Dynamic fallback string handling if environment parameter is blank
+        const callbackUrl = process.env.CALLBACK_URL || "https://your-live-domain.com";
 
-    // 🛑 VALIDATION: Ensure they are valid Kenya numbers (12 digits)
-    if (p1Phone.length !== 12 || p2Phone.length !== 12) {
-        return res.status(400).json({ 
-            success: false, 
-            message: "Invalid Phone Number Format. Use 07... or 254..." 
+        // =================================================================
+        // 📲 FINE-TUNED & HARDENED STK PAYLOAD BUILDER
+        // =================================================================
+        const createStkPayload = (phone, playerLabel) => {
+            const liveTimestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
+            
+            const livePassword = Buffer.from(
+                `${shortCode}${passkey}${liveTimestamp}`
+            ).toString('base64');
+
+            return {
+                "BusinessShortCode": shortCode,
+                "Password": livePassword,
+                "Timestamp": liveTimestamp,
+                
+                // 🩺 NOTE: Set "CustomerPayBillOnline" for standard Paybills.
+                // Change to "CustomerBuyGoodsOnline" if shortcode targets Buy Goods Till numbers.
+                "TransactionType": "CustomerPayBillOnline", 
+                
+                "Amount": stakeAmount,
+                "PartyA": phone,
+                "PartyB": shortCode,
+                "PhoneNumber": phone,
+                "CallBackURL": callbackUrl,
+                "AccountReference": `KPL_${playerLabel}`,
+                "TransactionDesc": "PlatformAccess"
+            };
+        };
+
+        // =================================================================
+        // 🛠️ EXECUTION PIPELINE
+        // =================================================================
+
+        // Dispatch Request Packet for Player 1 to Safaricom Production API Gateway
+        const p1Response = await axios.post(
+            'https://api.safaricom.co.ke',
+            createStkPayload(p1Phone, "P1"),
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        console.log("📲 Player 1 Push Successfully Sent. Request ID:", p1Response.data.CheckoutRequestID);
+
+        // ⚠️ ARCHITECTURAL WINDOW: 25-second delay buffer allowing Player 1 interaction timeline
+        await new Promise(resolve => setTimeout(resolve, 25000));
+
+        // Dispatch Request Packet for Player 2 to Safaricom Production API Gateway
+        const p2Response = await axios.post(
+            'https://api.safaricom.co.ke',
+            createStkPayload(p2Phone, "P2"),
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data.CheckoutRequestID);
+
+        const matchId = "MATCH_" + Date.now();
+
+        // Save session state maps inside instance cache memory definitions
+        activeMatches.set(matchId, {
+            status: "PENDING",
+            tier: tier,
+            payout: winnerPayout,
+            revenue: houseFee,
+            p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID },
+            p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID },
+            stake: stakeAmount,
+            winner: null
         });
+
+        // 🩺 NETWORK CONFIGURATION POINTER (Error 2002 Protection):
+        // If you choose to store persistent copies of matches in your database alongside your cache maps:
+        // await pool.query('INSERT INTO matches(id, status) VALUES($1, $2)', [matchId, 'PENDING']);
+
+        return res.json({ success: true, matchId: matchId, message: "Tiered Match Initiated" });
+
+    } catch (error) {
+        console.error("STK Fail:", error.response ? error.response.data : error.message);
+        return res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
     }
-
-    console.log(`🔌 PROCESSING MATCH: ${p1Phone} vs ${p2Phone}`);
-
-    // 💰 STEP 2: CALCULATE TIERS & PAYOUTS (For Admin Panel)
-    const stake = parseInt(stakeAmount);
-    let tier = "BRONZE";
-    if (stake === 100) tier = "SILVER";
-    if (stake === 200) tier = "GOLD";
-
-    const totalPot = stake * 2;
-    const houseFee = totalPot * 0.20; // 20%
-    const winnerPayout = totalPot * 0.80; // 80%
-// 🔐 STEP 3: PREPARE MPESA CONFIG (LIVE PRODUCTION ENV)
-try {
-  const token = await getMpesaToken();
-
-  
-  const ShortCode = process.env.MPESA_SHORTCODE; 
-  const passkey = process.env.MPESA_PASSKEY;
-
-  // 1. Generate local timestamp safely using Intl.DateTimeFormat (Forces YYYYMMDDHHmmss format in local time)
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Africa/Nairobi', // Forces East Africa Time to match Safaricom perfectly
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-  });
-  
-  const parts = formatter.formatToParts(new Date());
-  const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
-  const timestamp = `${p.year}${p.month}${p.day}${p.hour}${p.minute}${p.second}`;
-
-  // 2. Add an explicit check to make sure your keys are not empty
-  if (!ShortCode || !passkey) {
-    console.error("❌ ERROR: ShortCode or Passkey is missing from your environment variables!");
-  }
-
-  // 3. Generate password
-  const password = Buffer.from(`${ShortCode}${passkey}${timestamp}`).toString('base64');
-  const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-
-// =================================================================
-// 📲 FINE-TUNED & HARDENED STK PAYLOAD BUILDER (NO CODE DROP)
-// =================================================================
-
-// 1. Updated the builder to accept phone and unique reference parameters dynamically
-const createStkPayload = (phone, playerLabel) => {
-  // Dynamically capture the exact millisecond time for THIS specific execution packet
-  const liveTimestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
-  
-  // Dynamically hash the signature using the precise current timestamp
-  const livePassword = Buffer.from(
-    `${ShortCode}${MPESAPASSKEY}${liveTimestamp}`
-  ).toString('base64');
-
-  return {
-    "BusinessShortCode": ShortCode, // Your live Shortcode variable
-    "Password": livePassword,       // Dynamically computed signature
-    "Timestamp": liveTimestamp,     // Dynamically computed time token
-    
-    // 🩺 PRODUCTION SURGERY: Set this dynamically depending on your account setup
-    // Use "CustomerPayBillOnline" if you use a Live Paybill.
-    // Use "CustomerBuyGoodsOnline" if you use a Live Till Number (Buy Goods).
-    "TransactionType": "CustomerPayBillOnline", 
-    
-    "Amount": stakeAmount,
-    "PartyA": phone,
-    "PartyB": ShortCode,            // 🛡️ FIXED: Must match BusinessShortCode perfectly
-    "PhoneNumber": phone,
-    "CallBackURL": callbackUrl,
-    
-    // 🧼 METADATA CLEANUP: Clean alphanumeric identifiers under 12 characters (no spaces)
-    "AccountReference": `KPL_${playerLabel}`,      // 🟢 Outputs clean tracking tag e.g., "KPL_P1"
-    "TransactionDesc": "PlatformAccess"            // 🟢 Clean, safe string under hard limit
-  };
-};
-
-// =================================================================
-// 🛠️ EXECUTION PIPELINE
-// =================================================================
-
-try {
-  // 1. Dispatch the first phone request packet cleanly
-  const p1Response = await axios.post(
-    'https://safaricom.co.ke',
-    createStkPayload(p1Phone, "P1"), // Passes unique tracking key
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-        // 🩺 REMOVED SPOOFED USER AGENT: Safaricom Gateway blocks client desktop strings from server microservices
-      }
-    }
-  );
-
-  console.log("📲 Player 1 Push Successfully Sent. Request ID:", p1Response.data.CheckoutRequestID);
-
-  // ⚠️ ARCHITECTURAL ALERT: A 25-second hard delay (setTimeout) inside an HTTP route handler 
-  // can trigger gateway timeouts (504 Errors) on production servers (Nginx/AWS/Heroku hit limits at 30s).
-  // Consider running this execution pattern inside an asynchronous queue/worker background routine if it causes freezes.
-  await new Promise(resolve => setTimeout(resolve, 25000));
-
-  // 3. Dispatch the second phone request packet safely
-  const p2Response = await axios.post(
-    'https://safaricom.co.ke',
-    createStkPayload(p2Phone, "P2"), // Passes unique tracking key and calculates fresh time signature
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-
-  console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data.CheckoutRequestID);
-
-  // 4. Create Match ID
-  const matchId = "MATCH_" + Date.now();
-
-  // 5. SAVE TO MEMORY MAP
-  activeMatches.set(matchId, {
-    status: "PENDING",
-    tier: tier,
-    payout: winnerPayout,
-    revenue: houseFee,
-    p1: { phone: p1Phone, paid: false, reqId: p1Response.data.CheckoutRequestID },
-    p2: { phone: p2Phone, paid: false, reqId: p2Response.data.CheckoutRequestID },
-    stake: stakeAmount,
-    winner: null
-  });
-
-  // 🩺 ERROR 2002 REPAIR NOTE: 
-  // If your script has database drivers (Sequelize, MySQL2 pools, or Knex) connected to this file 
-  // to back up `activeMatches` right after this step, confirm your production database host isn't set to localhost.
-
-  res.json({ success: true, matchId: matchId, message: "Tiered Match Initiated" });
-
-} catch (error) {
-  console.error("STK Fail:", error.response ? error.response.data : error.message);
-  res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
-}
-
-
+});
 
 // ================================================================= //
 // ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)   //
