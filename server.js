@@ -211,7 +211,7 @@ const createStkPayload = (phone, playerLabel) => {
   
   // Dynamically hash the signature using the precise current timestamp
   const livePassword = Buffer.from(
-    `${ShortCode}${ LIVEPASSKEY}${liveTimestamp}`
+    `${ShortCode}${ MPESAPASSKEY}${liveTimestamp}`
   ).toString('base64');
 
   return {
