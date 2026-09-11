@@ -200,28 +200,45 @@ try {
 
   // Debug line to doubl 
 
-// 2. Define the STK Payload Builder
-const createStkPayload = (phone) => ({
-  BusinessShortCode: ShortCode,
-  Password: password,
-  Timestamp: timestamp,
-  TransactionType: "CustomerBuyGoodsOnline",
-  Amount: stakeAmount,
-  PartyA: phone,
-  PartyB: 4441433,
-  PhoneNumber: phone,
-  CallBackURL: callbackUrl,
-  AccountReference: "KAPLANCE DIGITAL",
-  TransactionDesc: "DEVELOPERS TICKET"
-});
-// ==========================================
-// 🛠️ FIXED: SEQUENTIAL EXECUTION
-// ==========================================
+// =================================================================
+// 📲 FINE-TUNED & HARDENED STK PAYLOAD BUILDER (NO CODE DROP)
+// =================================================================
+
+// 1. Updated the builder to accept phone and unique reference parameters dynamically
+const createStkPayload = (phone, playerLabel) => {
+  // Dynamically capture the exact millisecond time for THIS specific execution packet
+  const liveTimestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
+  
+  // Dynamically hash the signature using the precise current timestamp
+  const livePassword = Buffer.from(
+    `${ShortCode}${LIVE_PASSKEY}${liveTimestamp}`
+  ).toString('base64');
+
+  return {
+    "BusinessShortCode": ShortCode, // Your live Till Number variable
+    "Password": livePassword,       // Dynamically computed signature
+    "Timestamp": liveTimestamp,     // Dynamically computed time token
+    "TransactionType": "CustomerBuyGoodsOnline",
+    "Amount": stakeAmount,
+    "PartyA": phone,
+    "PartyB": ShortCode,            // 🛡️ FIXED: Must match BusinessShortCode perfectly
+    "PhoneNumber": phone,
+    "CallBackURL": callbackUrl,
+    
+    // 🧼 METADATA CLEANUP: Clean alphanumeric identifiers under 12 characters (no spaces)
+    "AccountReference": `KPL_${playerLabel}`,      // 🟢 Outputs clean tracking tag e.g., "KPL_P1"
+    "TransactionDesc": "PlatformAccessTicket" // 🟢 Clean, safe string under hard limit
+  };
+};
+
+// =================================================================
+// 🛠️ EXECUTION PIPELINE
+// =================================================================
 
 // 1. Dispatch the first phone request packet cleanly
 const p1Response = await axios.post(
   'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-  createStkPayload(p1Phone),
+  createStkPayload(p1Phone, "P1"), // Passes unique tracking key
   {
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -230,6 +247,8 @@ const p1Response = await axios.post(
     }
   }
 );
+
+console.log("📲 Player 1 Push Successfully Sent. Request ID:", p1Response.data.CheckoutRequestID);
 
 // 2. Pause execution for 25 seconds to give Player 1 time to complete PIN entry
 await new Promise(resolve => setTimeout(resolve, 25000));
@@ -237,7 +256,7 @@ await new Promise(resolve => setTimeout(resolve, 25000));
 // 3. Dispatch the second phone request packet safely
 const p2Response = await axios.post(
   'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-  createStkPayload(p2Phone),
+  createStkPayload(p2Phone, "P2"), // Passes unique tracking key and calculates fresh time signature
   {
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -246,6 +265,8 @@ const p2Response = await axios.post(
     }
   }
 );
+
+console.log("📲 Player 2 Push Successfully Sent. Request ID:", p2Response.data.CheckoutRequestID);
 
     
   // 4. Create Match ID
