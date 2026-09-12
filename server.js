@@ -184,11 +184,6 @@ try {
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or APP_URL).");
   }
 
-  // Dynamic Timestamp Generation (Format: YYYYMMDDHHmmss)
-  const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-  
-  // Generate dynamic Password
-  const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
 
      // 1. Generate Fresh Credentials Per Request
 const ShortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
