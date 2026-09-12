@@ -180,7 +180,7 @@ try {
   const token = await getMpesaToken();
 
   // Validation to prevent runtime crashes if variables are missing
-  if (!shortCode || !passkey || !appUrl) {
+  if (!ShortCode || !passkey || !appUrl) {
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or APP_URL).");
   }
 
@@ -197,7 +197,7 @@ const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('bas
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-    BusinessShortCode: shortCode,               // Head Office Shortcode
+    BusinessShortCode: ShortCode,               // Head Office Shortcode
     Password: password,
     Timestamp: timestamp,
     TransactionType: "CustomerBuyGoodsOnline", // ⚠️ Changed to Buy Goods
