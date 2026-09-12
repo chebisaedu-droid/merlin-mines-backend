@@ -51,7 +51,7 @@ async function getMpesaToken() {
         throw new Error("Missing required Mpesa environment variables (MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET).");
     }
 
-    // 2. USE SANDBOX URL
+    // 2. USE PRODUCTION URL
     const url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
     // 3. CREATE AUTH HEADER
@@ -200,7 +200,7 @@ const createStkPayload = (phone) => ({
     PartyA: phone,            
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
-    CallBackURL: callbackUrl,
+    CallBackURL: app_url,
     AccountReference: "KAPLANCE_DIGITAL",
     TransactionDesc: "developers ticket "
 });
