@@ -189,9 +189,6 @@ try {
   
   // Generate dynamic Password
   const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-  
-  // Construct dynamic Callback URL
-  const callbackUrl = `${appUrl}/api/v1/payment/callback`;
 
      // 1. Generate Fresh Credentials Per Request
 const ShortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
