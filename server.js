@@ -212,11 +212,21 @@ const createStkPayload = (phone) => ({
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_TILL_NUMBER, or APP_URL).");
   }
 
+               // 🔍 DEBUG: Validate variables before firing
+        console.log(`🚀 SENDING STAKE: ${stakeAmount} KES to ${p1Phone} & ${p2Phone}`);
+        
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
+        // We added a .catch() to EACH request so one failure doesn't kill the other
         const [p1Response, p2Response] = await Promise.all([
-            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } }),
+            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } })
+                 .catch(e => { throw new Error(`P1 Fail: ${JSON.stringify(e.response?.data || e.message)}`) }),
+            
             axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
+                 .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
         ]);
+
+        console.log("✅ STK SENT SUCCESS!"); 
+
 
         // 4. Create Match ID
         const matchId = "MATCH_" + Date.now();
