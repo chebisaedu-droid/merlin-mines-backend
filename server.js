@@ -180,9 +180,9 @@ try {
   const token = await getMpesaToken();
 
   // Pull values from Railway Environment Variables
-  const shortCode = process.env.MPESA_SHORTCODE;
+
   const passkey = process.env.MPESA_PASSKEY;
-  const appUrl = process.env.APP_URL;
+
 
   // Validation to prevent runtime crashes if variables are missing
   if (!shortCode || !passkey || !appUrl) {
