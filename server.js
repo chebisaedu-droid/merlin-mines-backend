@@ -179,11 +179,6 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
 try {
   const token = await getMpesaToken();
 
-  // Pull values from Railway Environment Variables
-
-  const passkey = process.env.MPESA_PASSKEY;
-
-
   // Validation to prevent runtime crashes if variables are missing
   if (!shortCode || !passkey || !appUrl) {
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or APP_URL).");
@@ -199,22 +194,11 @@ try {
   const callbackUrl = `${appUrl}/api/v1/payment/callback`;
 
      // 1. Generate Fresh Credentials Per Request
-const storeNumber = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
+const ShortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
 const tillNumber = process.env.MPESA_TILL_NUMBER;   // ACTUAL TILL NO
 const passkey = process.env.MPESA_PASSKEY;
 const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-
-// Generate fresh timestamp
-const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-
-// ⚠️ PASSWORD uses STORE NUMBER (BusinessShortCode), NOT the Till Number
-const password = Buffer.from(`${storeNumber}${passkey}${timestamp}`).toString('base64');
-
-// 1. Maintain your original variables
-const shortCode = process.env.MPESA_SHORTCODE; // This remains your Head Office Number
-
-const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-
+    
 // Generate fresh timestamp and password using your Head Office Shortcode
 const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
