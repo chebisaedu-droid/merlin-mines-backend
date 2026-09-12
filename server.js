@@ -198,7 +198,7 @@ const createStkPayload = (phone) => ({
     BusinessShortCode: shortCode,               // Head Office Shortcode
     Password: password,
     Timestamp: timestamp,
-    TransactionType: "CustomerBuyGoodsOnline", // ⚠️ Changed to Buy Goods
+    TransactionType: "CustomerPayBillOnline", // ⚠️ Changed to Buy Goods
     Amount: Math.floor(Number(stakeAmount)),
     PartyA: phone,            
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
