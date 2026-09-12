@@ -220,9 +220,7 @@ const createStkPayload = (phone) => ({
         const [p1Response, p2Response] = await Promise.all([
             axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } })
                  .catch(e => { throw new Error(`P1 Fail: ${JSON.stringify(e.response?.data || e.message)}`) }),
-            
-            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
-                 .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
+    
         ]);
     // 🔍 THE FINAL PILL: Read the full response body
 console.log("👉 P1 Full Object:", JSON.stringify({
