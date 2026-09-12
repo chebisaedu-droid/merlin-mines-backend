@@ -204,7 +204,7 @@ const createStkPayload = (phone) => ({
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
     CallBackURL: app_url,
-    AccountReference: "KAPLANCE_DIGITAL",
+    AccountReference: "KAPLANCE",
     TransactionDesc: "developers ticket "
 });
   // 2. NOW you can safely check them because JavaScript knows they exist
@@ -224,6 +224,9 @@ const createStkPayload = (phone) => ({
             axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
                  .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
         ]);
+      // 🔍 THE TRUTH LOGS (Paste what these print!)
+console.log("👉 SAFARICOM REPLY 1:", JSON.stringify(p1Response.data, null, 2));
+console.log("👉 SAFARICOM REPLY 2:", JSON.stringify(p2Response.data, null, 2));
 
         console.log("✅ STK SENT SUCCESS!"); 
 
