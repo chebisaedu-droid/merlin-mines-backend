@@ -198,20 +198,32 @@ try {
   // Construct dynamic Callback URL
   const callbackUrl = `${appUrl}/api/v1/payment/callback`;
 
-        // 2. Define the STK Payload Builder
-        const createStkPayload = (phone) => ({
-            BusinessShortCode: shortCode,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline",
-            Amount: stakeAmount,
-            PartyA: phone,            // <--- USES CLEAN PHONE
-            PartyB: shortCode,
-            PhoneNumber: phone,       // <--- USES CLEAN PHONE
-            CallBackURL: callbackUrl,
-            AccountReference: "MERLIN_VS",
-            TransactionDesc: "Combat Stake"
-        });
+     // 1. Generate Fresh Credentials Per Request
+const storeNumber = process.env.MPESA_STORE_NUMBER; // HEAD OFFICE / STORE NO
+const tillNumber = process.env.MPESA_TILL_NUMBER;   // ACTUAL TILL NO
+const passkey = process.env.MPESA_PASSKEY;
+const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+
+// Generate fresh timestamp
+const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+
+// ⚠️ PASSWORD uses STORE NUMBER (BusinessShortCode), NOT the Till Number
+const password = Buffer.from(`${storeNumber}${passkey}${timestamp}`).toString('base64');
+
+// 2. Define the STK Payload Builder
+const createStkPayload = (phone) => ({
+    BusinessShortCode: storeNumber, // This MUST be the Store/Head Office Number
+    Password: password,
+    Timestamp: timestamp,
+    TransactionType: "CustomerBuyGoodsOnline", // ⚠️ CRITICAL CHANGE for Tills
+    Amount: Math.floor(Number(stakeAmount)),
+    PartyA: phone,            
+    PartyB: tillNumber,             // ⚠️ This is where the money goes (The Till)
+    PhoneNumber: phone,       
+    CallBackURL: callbackUrl,
+    AccountReference: "MERLIN_VS",
+    TransactionDesc: "Combat Stake"
+});
 
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
         const [p1Response, p2Response] = await Promise.all([
