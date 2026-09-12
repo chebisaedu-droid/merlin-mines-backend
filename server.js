@@ -180,13 +180,13 @@ try {
   const token = await getMpesaToken();
 
   // Validation to prevent runtime crashes if variables are missing
-  if (!ShortCode || !passkey || !appUrl) {
+  if (!shortCode || !passkey || !appUrl) {
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or APP_URL).");
   }
 
 
      // 1. Generate Fresh Credentials Per Request
-const ShortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
+const shortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
 const tillNumber = process.env.MPESA_TILL_NUMBER;   // ACTUAL TILL NO
 const passkey = process.env.MPESA_PASSKEY;
 const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
@@ -197,7 +197,7 @@ const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('bas
 
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-    BusinessShortCode: ShortCode,               // Head Office Shortcode
+    BusinessShortCode: shortCode,               // Head Office Shortcode
     Password: password,
     Timestamp: timestamp,
     TransactionType: "CustomerBuyGoodsOnline", // ⚠️ Changed to Buy Goods
@@ -206,8 +206,8 @@ const createStkPayload = (phone) => ({
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
     CallBackURL: callbackUrl,
-    AccountReference: "MERLIN_VS",
-    TransactionDesc: "Combat Stake"
+    AccountReference: "KAPLANCE_DIGITAL",
+    TransactionDesc: "developers ticket "
 });
 
 
