@@ -179,11 +179,6 @@ app.post('/api/v1/payment/dual-stk', async (req, res) => {
 try {
   const token = await getMpesaToken();
 
-  // Validation to prevent runtime crashes if variables are missing
-  if (!shortCode || !passkey || !appUrl) {
-    throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or APP_URL).");
-  }
-
 
      // 1. Generate Fresh Credentials Per Request
 const shortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
@@ -209,7 +204,10 @@ const createStkPayload = (phone) => ({
     AccountReference: "KAPLANCE_DIGITAL",
     TransactionDesc: "developers ticket "
 });
-
+  // 2. NOW you can safely check them because JavaScript knows they exist
+  if (!shortCode || !passkey || !appUrl || !tillNumber) {
+    throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_TILL_NUMBER, or APP_URL).");
+  }
 
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
         const [p1Response, p2Response] = await Promise.all([
