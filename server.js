@@ -185,7 +185,7 @@ const shortCode  = process.env.MPESA_SHORTCODE; // HEAD OFFICE / STORE NO
 const tillNumber = process.env.MPESA_TILL_NUMBER;   // ACTUAL TILL NO
 const passkey = process.env.MPESA_PASSKEY;
 const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-    
+  const appUrl = process.env.CALLBACK_URL;  
 // Generate fresh timestamp and password using your Head Office Shortcode
 const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
