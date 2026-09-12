@@ -210,20 +210,30 @@ const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 // ⚠️ PASSWORD uses STORE NUMBER (BusinessShortCode), NOT the Till Number
 const password = Buffer.from(`${storeNumber}${passkey}${timestamp}`).toString('base64');
 
+// 1. Maintain your original variables
+const shortCode = process.env.MPESA_SHORTCODE; // This remains your Head Office Number
+const passkey = process.env.MPESA_PASSKEY;
+const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
+
+// Generate fresh timestamp and password using your Head Office Shortcode
+const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+
 // 2. Define the STK Payload Builder
 const createStkPayload = (phone) => ({
-    BusinessShortCode: storeNumber, // This MUST be the Store/Head Office Number
+    BusinessShortCode: shortCode,               // Head Office Shortcode
     Password: password,
     Timestamp: timestamp,
-    TransactionType: "CustomerBuyGoodsOnline", // ⚠️ CRITICAL CHANGE for Tills
+    TransactionType: "CustomerBuyGoodsOnline", // ⚠️ Changed to Buy Goods
     Amount: Math.floor(Number(stakeAmount)),
     PartyA: phone,            
-    PartyB: tillNumber,             // ⚠️ This is where the money goes (The Till)
+    PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
     CallBackURL: callbackUrl,
     AccountReference: "MERLIN_VS",
     TransactionDesc: "Combat Stake"
 });
+
 
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
         const [p1Response, p2Response] = await Promise.all([
