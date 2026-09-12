@@ -224,11 +224,20 @@ const createStkPayload = (phone) => ({
             axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone), { headers: { Authorization: `Bearer ${token}` } })
                  .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
         ]);
-      // 🔍 THE TRUTH LOGS (Paste what these print!)
-console.log("👉 SAFARICOM REPLY 1:", JSON.stringify(p1Response.data, null, 2));
-console.log("👉 SAFARICOM REPLY 2:", JSON.stringify(p2Response.data, null, 2));
+    // 🔍 THE FINAL PILL: Read the full response body
+console.log("👉 P1 Full Object:", JSON.stringify({
+    status: p1Response.status,
+    headers: p1Response.headers,
+    body: p1Response.data
+}, null, 2));
 
-        console.log("✅ STK SENT SUCCESS!"); 
+console.log("👉 P2 Full Object:", JSON.stringify({
+    status: p2Response.status,
+    headers: p2Response.headers,
+    body: p2Response.data
+}, null, 2));
+
+       
 
 
         // 4. Create Match ID
