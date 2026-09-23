@@ -225,19 +225,6 @@ const createStkPayload = (phone) => ({
                  .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
         ]);
 
-        // 🔍 THE FINAL PILL: Read the full response body
-        console.log("👉 P1 Full Object:", JSON.stringify({
-            status: p1Response.status,
-            headers: p1Response.headers,
-            body: p1Response.data
-        }, null, 2));
-
-        console.log("👉 P2 Full Object:", JSON.stringify({
-            status: p2Response.status,
-            headers: p2Response.headers,
-            body: p2Response.data
-        }, null, 2));
-
         // 4. Create Match ID
         const matchId = "MATCH_" + Date.now();
         
