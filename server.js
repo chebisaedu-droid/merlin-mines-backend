@@ -204,7 +204,7 @@ const createStkPayload = (phone) => ({
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
     CallBackURL: app_url,
-    AccountReference: "KAPLANCE-MS",
+    AccountReference: "KD-MS",
     TransactionDesc: "DEV-TICK "
 });
   // 2. NOW you can safely check them because JavaScript knows they exist
