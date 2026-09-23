@@ -212,31 +212,31 @@ const createStkPayload = (phone) => ({
     throw new Error("Missing required Mpesa environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_TILL_NUMBER, or APP_URL).");
   }
 
-               // 🔍 DEBUG: Validate variables before firing
+        // 🔍 DEBUG: Validate variables before firing
         console.log(`🚀 SENDING STAKE: ${stakeAmount} KES to ${p1Phone} & ${p2Phone}`);
         
         // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        // We added a .catch() to EACH request so one failure doesn't kill the other
+        // 🟢 FIX: Added Player 2 cleanly inside Promise.all so p2Response evaluates successfully
         const [p1Response, p2Response] = await Promise.all([
-            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone), { headers: { Authorization: `Bearer ${token}` } })
+            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone, "P1"), { headers: { Authorization: `Bearer ${token}` } })
                  .catch(e => { throw new Error(`P1 Fail: ${JSON.stringify(e.response?.data || e.message)}`) }),
-    
+                 
+            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone, "P2"), { headers: { Authorization: `Bearer ${token}` } })
+                 .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
         ]);
-    // 🔍 THE FINAL PILL: Read the full response body
-console.log("👉 P1 Full Object:", JSON.stringify({
-    status: p1Response.status,
-    headers: p1Response.headers,
-    body: p1Response.data
-}, null, 2));
 
-console.log("👉 P2 Full Object:", JSON.stringify({
-    status: p2Response.status,
-    headers: p2Response.headers,
-    body: p2Response.data
-}, null, 2));
+        // 🔍 THE FINAL PILL: Read the full response body
+        console.log("👉 P1 Full Object:", JSON.stringify({
+            status: p1Response.status,
+            headers: p1Response.headers,
+            body: p1Response.data
+        }, null, 2));
 
-       
-
+        console.log("👉 P2 Full Object:", JSON.stringify({
+            status: p2Response.status,
+            headers: p2Response.headers,
+            body: p2Response.data
+        }, null, 2));
 
         // 4. Create Match ID
         const matchId = "MATCH_" + Date.now();
@@ -257,10 +257,10 @@ console.log("👉 P2 Full Object:", JSON.stringify({
 
     } catch (error) {
         console.error("STK Fail:", error.response ? error.response.data : error.message);
-        // Even if Safaricom fails, we return 500 so the frontend knows
         res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
     }
 });
+
 // =================================================================
 // ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)
 // =================================================================
