@@ -260,12 +260,14 @@ app.post('/api/v1/payment/callback', (req, res) => {
         // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
         if (resultCode !== 0) {
             console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
-            return res.json({ result: "ok" });
+            // 🟢 CORRECTED FOR PRODUCTION: Safaricom Acknowledgment
+            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
         }
 
         if (!incomingCheckoutId) {
             console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
-            return res.json({ result: "ok" });
+            // 🟢 CORRECTED FOR PRODUCTION: Safaricom Acknowledgment
+            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
         }
 
         console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
@@ -311,11 +313,13 @@ app.post('/api/v1/payment/callback', (req, res) => {
             console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
         }
 
-        res.json({ result: "processed" });
+        // 🟢 CORRECTED FOR PRODUCTION: Safaricom Production standard acknowledgment format
+        res.json({ ResponseCode: "0", ResponseDesc: "success" });
 
     } catch (error) {
         console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
-        res.json({ result: "error" });
+        // 🟢 CORRECTED FOR PRODUCTION: Safaricom Fallback Acknowledgment
+        res.json({ ResponseCode: "1", ResponseDesc: "error" });
     }
 });
 
