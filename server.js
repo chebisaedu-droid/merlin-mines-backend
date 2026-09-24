@@ -259,12 +259,12 @@ app.post('/api/v1/payment/callback', (req, res) => {
         // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
         if (resultCode !== 0) {
             console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
-            return res.json({ result: "ok" });
+            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
         }
 
         if (!incomingCheckoutId) {
             console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
-            return res.json({ result: "ok" });
+            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
         }
 
         console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
@@ -274,12 +274,13 @@ app.post('/api/v1/payment/callback', (req, res) => {
         // 3. SCAN SYSTEM RECORDS BY UNIQUE CHECKOUT ID (Preserves Object Structure)
         for (const [matchId, match] of activeMatches.entries()) {
             
-            // Skip matches that are already cleared or closed
+            // 🟢 ORIGINAL TERMINOLOGY: Restored back to match your original database / game rules
             if (match.status === "READY_TO_FIGHT") continue;
 
             let matchUpdated = false;
 
             // 🎯 SECURE CHECK: Match strictly by Safaricom Transaction ID, not just phone number
+            // 🟢 ORIGINAL TERMINOLOGY: Restored back to nested paid matching state
             if (match.p1.reqId === incomingCheckoutId && !match.p1.paid) {
                 match.p1.paid = true;
                 matchUpdated = true;
@@ -298,6 +299,7 @@ app.post('/api/v1/payment/callback', (req, res) => {
             if (matchUpdated) {
                 // Sockets remain completely untouched; your status variables shift normally
                 if (match.p1.paid && match.p2.paid) {
+                    // 🟢 ORIGINAL TERMINOLOGY: Restored back to match.status
                     match.status = "READY_TO_FIGHT"; 
                     console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
                 }
@@ -310,13 +312,15 @@ app.post('/api/v1/payment/callback', (req, res) => {
             console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
         }
 
-        res.json({ result: "processed" });
+        // 🟢 REQUIRED FOR LIVE PRODUCTION: Acknowledge Safaricom with the correct object layout
+        res.json({ ResponseCode: "0", ResponseDesc: "success" });
 
     } catch (error) {
         console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
-        res.json({ result: "error" });
+        res.json({ ResponseCode: "1", ResponseDesc: "error" });
     }
 });
+
 
 // =================================================================
 // ➤ ADMIN DASHBOARD 
