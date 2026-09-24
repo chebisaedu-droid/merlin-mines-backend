@@ -247,12 +247,17 @@ const createStkPayload = (phone) => ({
         res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
     }
 });
-
 // =================================================================
 // ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
     try {
+        // 🛡️ CRITICAL AMENDMENT: Prevent crashing on empty pings, verification checks, or broken body schemas
+        if (!req.body || !req.body.Body || !req.body.Body.stkCallback) {
+            console.log("📡 Safaricom Network Ping or Empty Callback structure intercepted safely.");
+            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
+        }
+
         const callbackData = req.body.Body.stkCallback;
         const resultCode = callbackData.ResultCode; // 0 = Success
         const incomingCheckoutId = callbackData.CheckoutRequestID; // 🎯 SAFARICOM'S UNIQUE KEY
@@ -321,6 +326,7 @@ app.post('/api/v1/payment/callback', (req, res) => {
         res.json({ ResponseCode: "1", ResponseDesc: "error" });
     }
 });
+
 
 
 // =================================================================
