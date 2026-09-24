@@ -252,12 +252,6 @@ const createStkPayload = (phone) => ({
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
     try {
-        // 🛡️ CRITICAL AMENDMENT: Prevent crashing on empty pings, verification checks, or broken body schemas
-        if (!req.body || !req.body.Body || !req.body.Body.stkCallback) {
-            console.log("📡 Safaricom Network Ping or Empty Callback structure intercepted safely.");
-            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
-        }
-
         const callbackData = req.body.Body.stkCallback;
         const resultCode = callbackData.ResultCode; // 0 = Success
         const incomingCheckoutId = callbackData.CheckoutRequestID; // 🎯 SAFARICOM'S UNIQUE KEY
@@ -265,12 +259,12 @@ app.post('/api/v1/payment/callback', (req, res) => {
         // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
         if (resultCode !== 0) {
             console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
-            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
+            return res.json({ result: "ok" });
         }
 
         if (!incomingCheckoutId) {
             console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
-            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
+            return res.json({ result: "ok" });
         }
 
         console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
@@ -280,23 +274,21 @@ app.post('/api/v1/payment/callback', (req, res) => {
         // 3. SCAN SYSTEM RECORDS BY UNIQUE CHECKOUT ID (Preserves Object Structure)
         for (const [matchId, match] of activeMatches.entries()) {
             
-            // 🟢 WEB ALIGNMENT: Checked against "state" to match your front-end poller expectations
-            if (match.state === "READY_TO_FIGHT") continue;
+            // Skip matches that are already cleared or closed
+            if (match.status === "READY_TO_FIGHT") continue;
 
             let matchUpdated = false;
 
             // 🎯 SECURE CHECK: Match strictly by Safaricom Transaction ID, not just phone number
-            // 🟢 WEB ALIGNMENT: Updates "p1_paid" instead of nested structure so frontend sees it immediately
-            if (match.p1.reqId === incomingCheckoutId && !match.p1_paid) {
-                match.p1_paid = true;
+            if (match.p1.reqId === incomingCheckoutId && !match.p1.paid) {
+                match.p1.paid = true;
                 matchUpdated = true;
                 matchFound = true;
                 console.log(`✅ MATCH [${matchId}]: Player 1 VERIFIED PAID via CheckoutID.`);
             }
             
-            // 🟢 WEB ALIGNMENT: Updates "p2_paid" instead of nested structure so frontend sees it immediately
-            if (match.p2.reqId === incomingCheckoutId && !match.p2_paid) {
-                match.p2_paid = true;
+            if (match.p2.reqId === incomingCheckoutId && !match.p2.paid) {
+                match.p2.paid = true;
                 matchUpdated = true;
                 matchFound = true;
                 console.log(`✅ MATCH [${matchId}]: Player 2 VERIFIED PAID via CheckoutID.`);
@@ -305,9 +297,8 @@ app.post('/api/v1/payment/callback', (req, res) => {
             // 4. TRANSACTION GATE EVALUATION
             if (matchUpdated) {
                 // Sockets remain completely untouched; your status variables shift normally
-                if (match.p1_paid && match.p2_paid) {
-                    // 🟢 WEB ALIGNMENT: Sets "state" to unlock the Enter Lounge button on your site
-                    match.state = "READY_TO_FIGHT"; 
+                if (match.p1.paid && match.p2.paid) {
+                    match.status = "READY_TO_FIGHT"; 
                     console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
                 }
                 
@@ -319,15 +310,13 @@ app.post('/api/v1/payment/callback', (req, res) => {
             console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
         }
 
-        res.json({ ResponseCode: "0", ResponseDesc: "success" });
+        res.json({ result: "processed" });
 
     } catch (error) {
         console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
-        res.json({ ResponseCode: "1", ResponseDesc: "error" });
+        res.json({ result: "error" });
     }
 });
-
-
 
 // =================================================================
 // ➤ ADMIN DASHBOARD 
