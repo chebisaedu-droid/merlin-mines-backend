@@ -444,6 +444,29 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
 });
 
 // ============================================================================
+// =================================================================
+// 🎯 REAL-TIME STATUS CHECKPOINT (ALIGNED WITH WEB POLLER)
+// =================================================================
+app.get('/api/v1/match/status/:matchId', (req, res) => {
+    const { matchId } = req.params;
+    const match = activeMatches.get(matchId);
+
+    // If the memory cache doesn't have the record yet, return a safe pending fallback
+    if (!match) {
+        return res.json({
+            state: "PENDING",
+            p1_paid: false,
+            p2_paid: false
+        });
+    }
+
+    // Maps your original backend sandbox keys directly to the web client terminology
+    res.json({
+        state: match.status,       // Maps your "status" string to web "state"
+        p1_paid: match.p1 ? match.p1.paid : false, // Unpacks nested p1 status
+        p2_paid: match.p2 ? match.p2.paid : false  // Unpacks nested p2 status
+    });
+});
 
 // ----------------------------------------------------------------
 // 5. SERVER START
