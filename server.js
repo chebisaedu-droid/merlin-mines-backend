@@ -215,15 +215,35 @@ const createStkPayload = (phone) => ({
         // 🔍 DEBUG: Validate variables before firing
         console.log(`🚀 SENDING STAKE: ${stakeAmount} KES to ${p1Phone} & ${p2Phone}`);
         
-        // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        // 🟢 FIX: Added Player 2 cleanly inside Promise.all so p2Response evaluates successfully
+              // 3. FIRE DUAL REQUESTS (Parallel Execution)
+        // 🟢 FIX: Added 'timeout: 5000' to force a response if Safaricom blocks the connection
         const [p1Response, p2Response] = await Promise.all([
-            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p1Phone, "P1"), { headers: { Authorization: `Bearer ${token}` } })
-                 .catch(e => { throw new Error(`P1 Fail: ${JSON.stringify(e.response?.data || e.message)}`) }),
+            axios.post(
+                'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
+                createStkPayload(p1Phone, "P1"), 
+                { 
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 5000 // ⏱️ BREAKS THE FREEZE after 5 seconds
+                }
+            ).catch(e => { 
+                // 🩺 DIAGNOSTIC: This will tell us if it's a Firewall (Network Timeout) or a Data Error
+                const reason = e.code === 'ECONNABORTED' ? 'NETWORK_TIMEOUT_FIREWALL_BLOCK' : (e.response?.data || e.message);
+                throw new Error(`P1 Fail: ${JSON.stringify(reason)}`);
+            }),
                  
-            axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(p2Phone, "P2"), { headers: { Authorization: `Bearer ${token}` } })
-                 .catch(e => { throw new Error(`P2 Fail: ${JSON.stringify(e.response?.data || e.message)}`) })
+            axios.post(
+                'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
+                createStkPayload(p2Phone, "P2"), 
+                { 
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 5000 // ⏱️ BREAKS THE FREEZE after 5 seconds
+                }
+            ).catch(e => { 
+                const reason = e.code === 'ECONNABORTED' ? 'NETWORK_TIMEOUT_FIREWALL_BLOCK' : (e.response?.data || e.message);
+                throw new Error(`P2 Fail: ${JSON.stringify(reason)}`);
+            })
         ]);
+
 
         // 4. Create Match ID
         const matchId = "MATCH_" + Date.now();
