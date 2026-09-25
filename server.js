@@ -268,16 +268,16 @@ const createStkPayload = (phone) => ({
     }
 });
 // =================================================================
-// 📥 ROUTE D: THE "LOUD" UNIVERSAL CALLBACK RECEIVER
+// 📥 ROUTE D: THE "LOUD" UNIVERSAL CALLBACK RECEIVER (ALIGNED)
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
-    // 1. LOUD LOGGING: Verify if Safaricom is even hitting the server
+    // 1. LOUD LOGGING: Verify if Safaricom is hitting the server
     console.log("🔔 HIT: Callback Route Triggered!"); 
 
     try {
         const bodyData = req.body.Body;
         
-        // 2. HEALTH CHECK: Handle Safaricom's empty verification pings
+        // 2. HEALTH CHECK: Handle Safaricom's empty verification pings safely
         if (!bodyData || !bodyData.stkCallback) {
             console.log("📡 Safaricom Verification Ping Received.");
             return res.status(200).json({ ResponseCode: "0", ResponseDesc: "Alive" });
@@ -290,57 +290,59 @@ app.post('/api/v1/payment/callback', (req, res) => {
         console.log(`📥 PROCESSING RECEIPT: ${incomingCheckoutId} | Code: ${numericResultCode}`);
 
         if (numericResultCode === 0) {
-            // 3. UNIVERSAL LOOKUP: Loop through your transaction register
-            for (const [matchId, match] of Object.entries(liveMpesaTransactions)) {
+            // 3. 🟢 MEMORY REALIGNMENT (Option A): Scan activeMatches Map to align with Step 5
+            for (const [matchId, match] of activeMatches.entries()) {
                 
-                // Skip if already full
-                if (match.state === "READY_TO_FIGHT" || match.status === "READY_TO_FIGHT") continue;
+                // Skip if already full or cleared
+                if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
 
                 let matchUpdated = false;
 
-                // 🔍 CHECK PLAYER 1 (Handles both NEW 'p1_paid' and OLD 'p1.paid' styles)
+                // 🔍 CHECK PLAYER 1: Match strictly by the unique Safaricom tracking key
                 if (match.p1?.reqId === incomingCheckoutId) {
-                    // Set BOTH flags to ensure frontend sees it regardless of what it looks for
-                    match.p1_paid = true; 
+                    // Force-set both naming conventions so web formats don't miss it
+                    match.p1_paid = true;
                     if (match.p1) match.p1.paid = true;
                     matchUpdated = true;
-                    console.log(`✅ MATCH [${matchId}]: Player 1 PAID.`);
+                    console.log(`✅ MATCH [${matchId}]: Player 1 VERIFIED PAID.`);
                 }
 
-                // 🔍 CHECK PLAYER 2 (Handles both NEW 'p2_paid' and OLD 'p2.paid' styles)
+                // 🔍 CHECK PLAYER 2: Match strictly by the unique Safaricom tracking key
                 if (match.p2?.reqId === incomingCheckoutId) {
-                    // Set BOTH flags
                     match.p2_paid = true;
                     if (match.p2) match.p2.paid = true;
                     matchUpdated = true;
-                    console.log(`✅ MATCH [${matchId}]: Player 2 PAID.`);
+                    console.log(`✅ MATCH [${matchId}]: Player 2 VERIFIED PAID.`);
                 }
 
-                // 4. UNLOCK ARENA (Checks both styles)
+                // 4. UNLOCK ARENA (Checks both styles dynamically)
                 if (matchUpdated) {
                     const p1Ready = match.p1_paid || (match.p1 && match.p1.paid);
                     const p2Ready = match.p2_paid || (match.p2 && match.p2.paid);
 
                     if (p1Ready && p2Ready) {
-                        match.state = "READY_TO_FIGHT";
-                        match.status = "READY_TO_FIGHT"; // Support old frontend code too
-                        console.log(`⚔️ MATCH ${matchId} UNLOCKED!`);
+                        match.status = "READY_TO_FIGHT";
+                        match.state = "READY_TO_FIGHT"; // Fully synchronised fallback for front-end router hooks
+                        console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
                     }
-                    liveMpesaTransactions[matchId] = match;
+                    
+                    // Commit updates directly back to your database memory cache Map
+                    activeMatches.set(matchId, match);
                 }
             }
         } else {
-            console.warn(`❌ Transaction ${incomingCheckoutId} failed/cancelled.`);
+            console.warn(`❌ Transaction request session ${incomingCheckoutId} declined by user with code ${numericResultCode}`);
         }
 
-        // 5. SAFARICOM MANDATORY RESPONSE
+        // 5. SAFARICOM MANDATORY RESPONSE STANDARD
         return res.status(200).json({ ResponseCode: "0", ResponseDesc: "success" });
 
     } catch (error) {
-        console.error("⚠️ CALLBACK CRASH:", error.message);
+        console.error("⚠️ CRITICAL FAULT within Webhook Parser logic:", error.message);
         return res.status(200).json({ ResponseCode: "1", ResponseDesc: "error" });
     }
 });
+
 
 
 // =================================================================
