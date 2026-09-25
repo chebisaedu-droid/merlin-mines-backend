@@ -268,79 +268,71 @@ const createStkPayload = (phone) => ({
     }
 });
 // =================================================================
-// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist" - BULLETPROOF)
+// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist")
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
     try {
         const callbackData = req.body.Body.stkCallback;
+        // console.log("💰 CALLBACK RECEIVED:", JSON.stringify(callbackData)); // Uncomment for debug
+
         const resultCode = callbackData.ResultCode; // 0 = Success
-        const incomingCheckoutId = callbackData.CheckoutRequestID; // 🎯 SAFARICOM'S UNIQUE KEY
 
-        // 1. REJECT FAILED/CANCELLED PAYMENTS IMMEDIATELY
+        // 1. HANDLE CANCELLATION
         if (resultCode !== 0) {
-            console.log(`❌ PAYMENT CANCELLED/FAILED. ResultCode: ${resultCode} | ID: ${incomingCheckoutId}`);
-            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
+            console.log("❌ PAYMENT CANCELLED/FAILED.");
+            return res.json({ result: "ok" });
         }
 
-        if (!incomingCheckoutId) {
-            console.log("❌ CRITICAL: Callback missing CheckoutRequestID data.");
-            return res.json({ ResponseCode: "0", ResponseDesc: "Handled" });
-        }
+        // 2. EXTRACT PHONE NUMBER (The Robust Identifier)
+        const metaItems = callbackData.CallbackMetadata.Item;
+        const phoneObj = metaItems.find(item => item.Name === "PhoneNumber");
+        const paidPhone = phoneObj ? phoneObj.Value.toString() : null;
 
-        console.log(`\n📡 SECURE CALLBACK RECEIVED FROM SAFARICOM FOR ID: ${incomingCheckoutId}`);
+        if (!paidPhone) return res.json({ result: "ok" }); // Should never happen
 
+        console.log(`📩 PAYMENT CONFIRMED FROM: ${paidPhone}`);
+
+        // 3. FIND THE MATCH & UPDATE STATUS
         let matchFound = false;
 
-        // 3. SCAN SYSTEM RECORDS BY UNIQUE CHECKOUT ID (Preserves Object Structure)
         for (const [matchId, match] of activeMatches.entries()) {
             
-            // 🟢 ORIGINAL TERMINOLOGY: Restored back to match your original database / game rules
-            if (match.status === "READY_TO_FIGHT") continue;
-
-            let matchUpdated = false;
-
-            // 🎯 SECURE CHECK: Match strictly by Safaricom Transaction ID, not just phone number
-            // 🟢 ORIGINAL TERMINOLOGY: Restored back to nested paid matching state
-            if (match.p1.reqId === incomingCheckoutId && !match.p1.paid) {
+            // Is it Player 1?
+            if (match.p1.phone.toString() === paidPhone) {
                 match.p1.paid = true;
-                matchUpdated = true;
                 matchFound = true;
-                console.log(`✅ MATCH [${matchId}]: Player 1 VERIFIED PAID via CheckoutID.`);
+                console.log(`✅ MATCH ${matchId}: Player 1 PAID.`);
             }
             
-            if (match.p2.reqId === incomingCheckoutId && !match.p2.paid) {
+            // Is it Player 2?
+            if (match.p2.phone.toString() === paidPhone) {
                 match.p2.paid = true;
-                matchUpdated = true;
                 matchFound = true;
-                console.log(`✅ MATCH [${matchId}]: Player 2 VERIFIED PAID via CheckoutID.`);
+                console.log(`✅ MATCH ${matchId}: Player 2 PAID.`);
             }
 
-            // 4. TRANSACTION GATE EVALUATION
-            if (matchUpdated) {
-                // Sockets remain completely untouched; your status variables shift normally
+            // 4. CHECK IF BOTH PAID (Unlock the Gate)
+            if (matchFound) {
                 if (match.p1.paid && match.p2.paid) {
-                    // 🟢 ORIGINAL TERMINOLOGY: Restored back to match.status
                     match.status = "READY_TO_FIGHT"; 
-                    console.log(`⚔️ [LOCKOUT DEACTIVATED] MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
+                    console.log(`⚔️ MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
                 }
-                
                 activeMatches.set(matchId, match); // Save Updates
+                break; // Stop scanning
             }
         }
 
         if (!matchFound) {
-            console.log(`⚠️ ALERT: Received valid payment for ID ${incomingCheckoutId} but no active pending match tracking it.`);
+            console.log("⚠️ WARNING: Payment received but no matching player found.");
         }
 
-        // 🟢 REQUIRED FOR LIVE PRODUCTION: Acknowledge Safaricom with the correct object layout
-        res.json({ ResponseCode: "0", ResponseDesc: "success" });
+        res.json({ result: "processed" });
 
     } catch (error) {
-        console.error("🔒 CRITICAL CALLBACK SECURE ERROR:", error.message);
-        res.json({ ResponseCode: "1", ResponseDesc: "error" });
+        console.error("Callback Error:", error.message);
+        res.json({ result: "error" });
     }
 });
-
 
 // =================================================================
 // ➤ ADMIN DASHBOARD 
