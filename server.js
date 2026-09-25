@@ -268,69 +268,77 @@ const createStkPayload = (phone) => ({
     }
 });
 // =================================================================
-// ➤ PAYMENT: CALLBACK HANDLER (The "Receptionist")
+// 📥 ROUTE D: THE "LOUD" UNIVERSAL CALLBACK RECEIVER
 // =================================================================
 app.post('/api/v1/payment/callback', (req, res) => {
+    // 1. LOUD LOGGING: Verify if Safaricom is even hitting the server
+    console.log("🔔 HIT: Callback Route Triggered!"); 
+
     try {
-        const callbackData = req.body.Body.stkCallback;
-        // console.log("💰 CALLBACK RECEIVED:", JSON.stringify(callbackData)); // Uncomment for debug
-
-        const resultCode = callbackData.ResultCode; // 0 = Success
-
-        // 1. HANDLE CANCELLATION
-        if (resultCode !== 0) {
-            console.log("❌ PAYMENT CANCELLED/FAILED.");
-            return res.json({ result: "ok" });
+        const bodyData = req.body.Body;
+        
+        // 2. HEALTH CHECK: Handle Safaricom's empty verification pings
+        if (!bodyData || !bodyData.stkCallback) {
+            console.log("📡 Safaricom Verification Ping Received.");
+            return res.status(200).json({ ResponseCode: "0", ResponseDesc: "Alive" });
         }
 
-        // 2. EXTRACT PHONE NUMBER (The Robust Identifier)
-        const metaItems = callbackData.CallbackMetadata.Item;
-        const phoneObj = metaItems.find(item => item.Name === "PhoneNumber");
-        const paidPhone = phoneObj ? phoneObj.Value.toString() : null;
+        const callbackPayload = bodyData.stkCallback;
+        const incomingCheckoutId = callbackPayload.CheckoutRequestID;
+        const numericResultCode = callbackPayload.ResultCode;
 
-        if (!paidPhone) return res.json({ result: "ok" }); // Should never happen
+        console.log(`📥 PROCESSING RECEIPT: ${incomingCheckoutId} | Code: ${numericResultCode}`);
 
-        console.log(`📩 PAYMENT CONFIRMED FROM: ${paidPhone}`);
+        if (numericResultCode === 0) {
+            // 3. UNIVERSAL LOOKUP: Loop through your transaction register
+            for (const [matchId, match] of Object.entries(liveMpesaTransactions)) {
+                
+                // Skip if already full
+                if (match.state === "READY_TO_FIGHT" || match.status === "READY_TO_FIGHT") continue;
 
-        // 3. FIND THE MATCH & UPDATE STATUS
-        let matchFound = false;
+                let matchUpdated = false;
 
-        for (const [matchId, match] of activeMatches.entries()) {
-            
-            // Is it Player 1?
-            if (match.p1.phone.toString() === paidPhone) {
-                match.p1.paid = true;
-                matchFound = true;
-                console.log(`✅ MATCH ${matchId}: Player 1 PAID.`);
-            }
-            
-            // Is it Player 2?
-            if (match.p2.phone.toString() === paidPhone) {
-                match.p2.paid = true;
-                matchFound = true;
-                console.log(`✅ MATCH ${matchId}: Player 2 PAID.`);
-            }
-
-            // 4. CHECK IF BOTH PAID (Unlock the Gate)
-            if (matchFound) {
-                if (match.p1.paid && match.p2.paid) {
-                    match.status = "READY_TO_FIGHT"; 
-                    console.log(`⚔️ MATCH ${matchId} FULLY FUNDED! UNLOCKING ARENA.`);
+                // 🔍 CHECK PLAYER 1 (Handles both NEW 'p1_paid' and OLD 'p1.paid' styles)
+                if (match.p1?.reqId === incomingCheckoutId) {
+                    // Set BOTH flags to ensure frontend sees it regardless of what it looks for
+                    match.p1_paid = true; 
+                    if (match.p1) match.p1.paid = true;
+                    matchUpdated = true;
+                    console.log(`✅ MATCH [${matchId}]: Player 1 PAID.`);
                 }
-                activeMatches.set(matchId, match); // Save Updates
-                break; // Stop scanning
+
+                // 🔍 CHECK PLAYER 2 (Handles both NEW 'p2_paid' and OLD 'p2.paid' styles)
+                if (match.p2?.reqId === incomingCheckoutId) {
+                    // Set BOTH flags
+                    match.p2_paid = true;
+                    if (match.p2) match.p2.paid = true;
+                    matchUpdated = true;
+                    console.log(`✅ MATCH [${matchId}]: Player 2 PAID.`);
+                }
+
+                // 4. UNLOCK ARENA (Checks both styles)
+                if (matchUpdated) {
+                    const p1Ready = match.p1_paid || (match.p1 && match.p1.paid);
+                    const p2Ready = match.p2_paid || (match.p2 && match.p2.paid);
+
+                    if (p1Ready && p2Ready) {
+                        match.state = "READY_TO_FIGHT";
+                        match.status = "READY_TO_FIGHT"; // Support old frontend code too
+                        console.log(`⚔️ MATCH ${matchId} UNLOCKED!`);
+                    }
+                    liveMpesaTransactions[matchId] = match;
+                }
             }
+        } else {
+            console.warn(`❌ Transaction ${incomingCheckoutId} failed/cancelled.`);
         }
 
-        if (!matchFound) {
-            console.log("⚠️ WARNING: Payment received but no matching player found.");
-        }
-
-        res.json({ result: "processed" });
+        // 5. SAFARICOM MANDATORY RESPONSE
+        return res.status(200).json({ ResponseCode: "0", ResponseDesc: "success" });
 
     } catch (error) {
-        console.error("Callback Error:", error.message);
-        res.json({ result: "error" });
+        console.error("⚠️ CALLBACK CRASH:", error.message);
+        return res.status(200).json({ ResponseCode: "1", ResponseDesc: "error" });
     }
 });
 
