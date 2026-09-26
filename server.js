@@ -491,37 +491,58 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
     });
 });
 // =================================================================
-// 👑 ADMIN ROUTE 1: GET ALL INCOMPLETE MATCHES (REFUND REGISTRY)
+// 👑 ADMIN PHASE 1: GET TIERED INCOMPLETE TICKETS (REFUND ENGINE)
 // =================================================================
-app.get('/api/v1/admin/failed-tickets', (req, res) => {
+app.get('/api/v1/admin/failed-tickets-tiered', (req, res) => {
     try {
-        const stuckTicketsList = [];
+        // Initialize distinct buckets for your accounting tiers
+        const tieredRefunds = {
+            BRONZE: [],
+            SILVER: [],
+            GOLD: []
+        };
 
-        // Scan memory cache for entries where one paid but the other flaked
+        // Scan across your live memory map registers
         for (const [matchId, match] of activeMatches.entries()) {
             
-            // Skip matches that are completed or already running
+            // Bypass matches that successfully entered the fighting arena
             if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
 
             const p1Paid = match.p1_paid || (match.p1 && match.p1.paid);
             const p2Paid = match.p2_paid || (match.p2 && match.p2.paid);
 
-            // Flag if exactly one player paid, leaving funds trapped
+            // A partial failure means exactly ONE player cleared their PIN
             if ((p1Paid && !p2Paid) || (!p1Paid && p2Paid)) {
-                stuckTicketsList.push({
+                
+                // Identify the trapped player's mobile number safely
+                const stuckPhone = p1Paid ? (match.p1?.phone || match.p1Phone) : (match.p2?.phone || match.p2Phone);
+                const stake = parseInt(match.stakeAmount || match.stake || 0);
+
+                // Build a clean, structured accounting record
+                const refundRecord = {
                     matchId: matchId,
-                    tier: match.tier || match.tierName || "BRONZE",
-                    stakeAmount: match.stakeAmount,
-                    p1: { phone: match.p1?.phone, paid: p1Paid },
-                    p2: { phone: p2Phone = match.p2?.phone, paid: p2Paid }
-                });
+                    stuckPhone: stuckPhone || "UNKNOWN_LINE",
+                    amount: stake,
+                    timestamp: matchId.split('_')[1] ? new Date(parseInt(matchId.split('_')[1])).toLocaleString('en-KE') : new Date().toLocaleString('en-KE')
+                };
+
+                // Classify the record strictly into its appropriate tier bucket by stake value
+                if (stake === 100) {
+                    tieredRefunds.SILVER.push(refundRecord);
+                } else if (stake === 200) {
+                    tieredRefunds.GOLD.push(refundRecord);
+                } else {
+                    tieredRefunds.BRONZE.push(refundRecord); // Defaults to Bronze for 50 KES or general entries
+                }
             }
         }
 
-        return res.status(200).json({ success: true, tickets: stuckTicketsList });
+        // Send the fully grouped, sorted object back to your admin client dashboard
+        return res.status(200).json({ success: true, data: tieredRefunds });
+
     } catch (error) {
-        console.error("❌ Admin refund logs stream failed:", error.message);
-        return res.status(500).json({ success: false, message: "Internal server error" });
+        console.error("❌ Admin refund tier stream breakdown:", error.message);
+        return res.status(500).json({ success: false, message: "Internal server registry breakdown." });
     }
 });
 
