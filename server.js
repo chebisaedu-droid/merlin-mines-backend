@@ -490,6 +490,63 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
         p2_paid: match.p2 ? match.p2.paid : false  // Unpacks nested p2 status
     });
 });
+// =================================================================
+// 👑 ADMIN ROUTE 1: GET ALL INCOMPLETE MATCHES (REFUND REGISTRY)
+// =================================================================
+app.get('/api/v1/admin/failed-tickets', (req, res) => {
+    try {
+        const stuckTicketsList = [];
+
+        // Scan memory cache for entries where one paid but the other flaked
+        for (const [matchId, match] of activeMatches.entries()) {
+            
+            // Skip matches that are completed or already running
+            if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
+
+            const p1Paid = match.p1_paid || (match.p1 && match.p1.paid);
+            const p2Paid = match.p2_paid || (match.p2 && match.p2.paid);
+
+            // Flag if exactly one player paid, leaving funds trapped
+            if ((p1Paid && !p2Paid) || (!p1Paid && p2Paid)) {
+                stuckTicketsList.push({
+                    matchId: matchId,
+                    tier: match.tier || match.tierName || "BRONZE",
+                    stakeAmount: match.stakeAmount,
+                    p1: { phone: match.p1?.phone, paid: p1Paid },
+                    p2: { phone: p2Phone = match.p2?.phone, paid: p2Paid }
+                });
+            }
+        }
+
+        return res.status(200).json({ success: true, tickets: stuckTicketsList });
+    } catch (error) {
+        console.error("❌ Admin refund logs stream failed:", error.message);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+});
+
+// =================================================================
+// 👑 ADMIN ROUTE 2: MANUAL PURGE (Delete Stuck Match From Memory)
+// =================================================================
+app.delete('/api/v1/admin/purge-match/:matchId', (req, res) => {
+    try {
+        const { matchId } = req.params;
+
+        if (!activeMatches.has(matchId)) {
+            return res.status(404).json({ success: false, message: "Match index not located inside server memory." });
+        }
+
+        // 🪓 PURGE FLUSH: Delete the match cleanly out of memory cache maps
+        activeMatches.delete(matchId);
+        console.log(`🗑️ ADMIN STATUS MANUAL PURGE: Match ${matchId} flushed from memory.`);
+
+        return res.status(200).json({ success: true, message: "Match record successfully purged." });
+    } catch (error) {
+        console.error("❌ Admin manual purge breakdown:", error.message);
+        return res.status(500).json({ success: false, message: "Internal database update failure" });
+    }
+});
+
 
 // ----------------------------------------------------------------
 // 5. SERVER START
