@@ -503,8 +503,9 @@ app.get('/api/v1/admin/failed-tickets', (req, res) => {
             // Skip matches that are completed or already running
             if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
 
-            const p1Paid = match.p1_paid || (match.p1 && match.p1.paid);
-            const p2Paid = match.p2_paid || (match.p2 && match.p2.paid);
+            // 🟢 CALLBACK SYNC: Pull flat parameters or nested configurations to support all engine iterations
+            const p1Paid = match.p1_paid || (match.p1 && match.p1.paid) || false;
+            const p2Paid = match.p2_paid || (match.p2 && match.p2.paid) || false;
 
             // Flag if exactly one player paid, leaving funds trapped
             if ((p1Paid && !p2Paid) || (!p1Paid && p2Paid)) {
@@ -512,8 +513,9 @@ app.get('/api/v1/admin/failed-tickets', (req, res) => {
                     matchId: matchId,
                     tier: match.tier || match.tierName || "BRONZE",
                     stakeAmount: match.stakeAmount,
-                    p1: { phone: match.p1?.phone, paid: p1Paid },
-                    p2: { phone: p2Phone = match.p2?.phone, paid: p2Paid }
+                    // 🟢 FIXED SYNTAX: Extracted the parameter evaluation cleanly to prevent reference assignment crashes
+                    p1: { phone: match.p1?.phone || "", paid: p1Paid },
+                    p2: { phone: match.p2?.phone || "", paid: p2Paid }
                 });
             }
         }
