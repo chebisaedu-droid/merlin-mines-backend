@@ -503,19 +503,22 @@ app.get('/api/v1/admin/failed-tickets', (req, res) => {
             // Skip matches that are completed or already running
             if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
 
-            // 🟢 CALLBACK SYNC: Pull flat parameters or nested configurations to support all engine iterations
             const p1Paid = match.p1_paid || (match.p1 && match.p1.paid) || false;
             const p2Paid = match.p2_paid || (match.p2 && match.p2.paid) || false;
 
             // Flag if exactly one player paid, leaving funds trapped
             if ((p1Paid && !p2Paid) || (!p1Paid && p2Paid)) {
+                
+                // 🟢 FIX: Handle every single possible name variation to prevent blank screens
+                const finalTier = match.tier || match.tierName || "BRONZE";
+                const finalStake = match.stakeAmount || match.stake || 50;
+
                 stuckTicketsList.push({
                     matchId: matchId,
-                    tier: match.tier || match.tierName || "BRONZE",
-                    stakeAmount: match.stakeAmount,
-                    // 🟢 FIXED SYNTAX: Extracted the parameter evaluation cleanly to prevent reference assignment crashes
-                    p1: { phone: match.p1?.phone || "", paid: p1Paid },
-                    p2: { phone: match.p2?.phone || "", paid: p2Paid }
+                    tier: finalTier.toUpperCase(),
+                    stakeAmount: parseInt(finalStake), // Forces a clean number
+                    p1: { phone: match.p1?.phone || match.p1Phone || "P1 Line", paid: p1Paid },
+                    p2: { phone: match.p2?.phone || match.p2Phone || "P2 Line", paid: p2Paid }
                 });
             }
         }
