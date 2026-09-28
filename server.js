@@ -490,68 +490,105 @@ app.get('/api/v1/match/status/:matchId', (req, res) => {
         p2_paid: match.p2 ? match.p2.paid : false  // Unpacks nested p2 status
     });
 });
+
 // =================================================================
-// 👑 ADMIN ROUTE 1: GET ALL INCOMPLETE MATCHES (REFUND REGISTRY)
+// 👑 ADMIN ROUTE 1: GET ALL INCOMPLETE MATCHES
+// Uses the SAME data format as /api/v1/admin/matches
 // =================================================================
-app.get('/api/v1/admin/failed-tickets', (req, res) => {
+app.get('/api/v1/admin/failed-tickets', authenticateAdmin, (req, res) => {
     try {
-        const stuckTicketsList = [];
+        const incompleteMatches = Array.from(activeMatches.entries())
+            .filter(([matchId, data]) => {
 
-        // Scan memory cache for entries where one paid but the other flaked
-        for (const [matchId, match] of activeMatches.entries()) {
-            
-            // Skip matches that are completed or already running
-            if (match.status === "READY_TO_FIGHT" || match.state === "READY_TO_FIGHT") continue;
+                // Ignore matches already ready or completed
+                if (
+                    data.status === "READY_TO_FIGHT" ||
+                    data.state === "READY_TO_FIGHT" ||
+                    data.status === "COMPLETED"
+                ) {
+                    return false;
+                }
 
-            const p1Paid = match.p1_paid || (match.p1 && match.p1.paid) || false;
-            const p2Paid = match.p2_paid || (match.p2 && match.p2.paid) || false;
+                const p1Paid = data.p1?.paid || false;
+                const p2Paid = data.p2?.paid || false;
 
-            // Flag if exactly one player paid, leaving funds trapped
-            if ((p1Paid && !p2Paid) || (!p1Paid && p2Paid)) {
-                
-                // 🟢 FIX: Handle every single possible name variation to prevent blank screens
-                const finalTier = match.tier || match.tierName || "BRONZE";
-                const finalStake = match.stakeAmount || match.stake || 50;
+                // Incomplete = one player paid and the other did not
+                return (p1Paid && !p2Paid) || (!p1Paid && p2Paid);
+            })
+            .map(([id, data]) => ({
+                // SAME FORMAT AS /admin/matches
+                matchId: id,
+                timestamp: new Date().toISOString(),
 
-                stuckTicketsList.push({
-                    matchId: matchId,
-                    tier: finalTier.toUpperCase(),
-                    stakeAmount: parseInt(finalStake), // Forces a clean number
-                    p1: { phone: match.p1?.phone || match.p1Phone || "P1 Line", paid: p1Paid },
-                    p2: { phone: match.p2?.phone || match.p2Phone || "P2 Line", paid: p2Paid }
-                });
-            }
-        }
+                status: data.status || "PENDING",
+                tier: data.tier || "BRONZE",
 
-        return res.status(200).json({ success: true, tickets: stuckTicketsList });
+                p1: data.p1,
+                p2: data.p2,
+
+                winner: data.winner || null,
+
+                payout: data.payout || 0,
+                revenue: data.revenue || 0
+            }));
+
+        console.log(`👑 ADMIN: ${incompleteMatches.length} incomplete match(es) found.`);
+
+        return res.status(200).json({
+            success: true,
+            matches: incompleteMatches
+        });
+
     } catch (error) {
-        console.error("❌ Admin refund logs stream failed:", error.message);
-        return res.status(500).json({ success: false, message: "Internal server error" });
+        console.error("❌ Admin incomplete matches error:", error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server Error Fetching Incomplete Matches"
+        });
     }
 });
 
+
 // =================================================================
-// 👑 ADMIN ROUTE 2: MANUAL PURGE (Delete Stuck Match From Memory)
+// 👑 ADMIN ROUTE 2: MANUAL PURGE
 // =================================================================
-app.delete('/api/v1/admin/purge-match/:matchId', (req, res) => {
+app.delete('/api/v1/admin/purge-match/:matchId', authenticateAdmin, (req, res) => {
     try {
         const { matchId } = req.params;
 
         if (!activeMatches.has(matchId)) {
-            return res.status(404).json({ success: false, message: "Match index not located inside server memory." });
+            return res.status(404).json({
+                success: false,
+                message: "Match ID not found"
+            });
         }
 
-        // 🪓 PURGE FLUSH: Delete the match cleanly out of memory cache maps
-        activeMatches.delete(matchId);
-        console.log(`🗑️ ADMIN STATUS MANUAL PURGE: Match ${matchId} flushed from memory.`);
+        const match = activeMatches.get(matchId);
 
-        return res.status(200).json({ success: true, message: "Match record successfully purged." });
+        console.log(
+            `🗑️ ADMIN PURGE: ${matchId} | ` +
+            `${match.p1?.phone || "P1"} | ` +
+            `${match.p2?.phone || "P2"}`
+        );
+
+        activeMatches.delete(matchId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Match record successfully purged.",
+            matchId: matchId
+        });
+
     } catch (error) {
-        console.error("❌ Admin manual purge breakdown:", error.message);
-        return res.status(500).json({ success: false, message: "Internal database update failure" });
+        console.error("❌ Admin purge error:", error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server Error Purging Match"
+        });
     }
 });
-
 // ----------------------------------------------------------------
 // 5. SERVER START
 // ----------------------------------------------------------------
