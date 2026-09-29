@@ -216,14 +216,14 @@ const createStkPayload = (phone) => ({
         console.log(`🚀 SENDING STAKE: ${stakeAmount} KES to ${p1Phone} & ${p2Phone}`);
         
               // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        // 🟢 FIX: Added 'timeout: 5000' to force a response if Safaricom blocks the connection
+       
         const [p1Response, p2Response] = await Promise.all([
             axios.post(
                 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
                 createStkPayload(p1Phone, "P1"), 
                 { 
                     headers: { Authorization: `Bearer ${token}` },
-                    timeout: 5000 // ⏱️ BREAKS THE FREEZE after 5 seconds
+                   
                 }
             ).catch(e => { 
                 // 🩺 DIAGNOSTIC: This will tell us if it's a Firewall (Network Timeout) or a Data Error
@@ -236,7 +236,7 @@ const createStkPayload = (phone) => ({
                 createStkPayload(p2Phone, "P2"), 
                 { 
                     headers: { Authorization: `Bearer ${token}` },
-                    timeout: 5000 // ⏱️ BREAKS THE FREEZE after 5 seconds
+                   
                 }
             ).catch(e => { 
                 const reason = e.code === 'ECONNABORTED' ? 'NETWORK_TIMEOUT_FIREWALL_BLOCK' : (e.response?.data || e.message);
