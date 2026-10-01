@@ -7,12 +7,6 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
 const axios = require('axios'); // Requires: npm install axios
-const multer = require('multer');
-const archiver = require('archiver');
-const fs = require('fs');
-const path = require('path');  // 👈 THIS IS THE MISSING KEY
-
-// ... Global Middlewares start here ...
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -594,105 +588,6 @@ app.delete('/api/v1/admin/purge-match/:matchId', authenticateAdmin, (req, res) =
         });
     }
 });
-// 1. GLOBAL MIDDLEWARES
-app.use(cors());
-app.use(express.json()); // Essential for parsing incoming M-Pesa Callback payloads
-app.use(express.urlencoded({ extended: true }));
-
-// 2. PRODUCTION DIRECTORY SETUP FOR COMPRESSED ASSETS
-const STORAGE_DIR = path.join(__dirname, 'secure_storage');
-const TEMP_DIR = path.join(__dirname, 'temp_upload_hold');
-
-if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR);
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
-
-// 3. MULTER CONFIGURATION FOR DYNAMIC FOLDER SCANNING
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, TEMP_DIR);
-    },
-    filename: (req, file, cb) => {
-        // Sanitizes directory slashes so nested folder structures don't break the local OS filesystem
-        cb(null, Date.now() + '_' + file.originalname.replace(/\//g, '_'));
-    }
-});
-const upload = multer({ storage });
-
-// 4. IN-MEMORY PRODUCTION DATABASE INSTANCES
-let productCatalogDatabase = [];
-let liveMpesaTransactions = {};
-
-// ==========================================
-// 📂 ROUTE A: ADMIN PANEL FOLDER COMPRESSION & UPLOAD HOOK
-// ==========================================
-app.post('/api/v1/admin/upload', upload.array('assets'), (req, res) => {
-    console.log("📥 Admin initiated a raw folder architectural upload sequence...");
-    
-    try {
-        const { title, physics, price, felt } = req.body;
-        
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ success: false, message: "No source files detected in upload stream." });
-        }
-
-        const productId = 'KP_PROD_' + Math.random().toString(36).substr(2, 9).toUpperCase();
-        const secureZipName = `KAPLANCE-${title.toUpperCase().replace(/\s+/g, '-')}-${productId}.zip`;
-        const finalZipPath = path.join(STORAGE_DIR, secureZipName);
-
-        // Initiate archiving pipeline streams
-        const outputStream = fs.createWriteStream(finalZipPath);
-        const zipArchive = archiver('zip', { zlib: { level: 9 } }); // Max compression level
-
-        outputStream.on('close', () => {
-            console.log(`📦 Compression finished successfully. Total bytes: ${zipArchive.pointer()}`);
-            
-            // Clean out the temporary upload holding folder to save Railway container disk space
-            req.files.forEach(file => {
-                if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-            });
-
-            // Inject the formal structured product into our live server registry
-            const freshAssetRecord = {
-                id: productId,
-                title: title,
-                physics_engine: physics,
-                felt_layout: felt,
-                price: parseInt(price),
-                download_vault_path: finalZipPath,
-                created_at: new Date()
-            };
-
-            productCatalogDatabase.push(freshAssetRecord);
-            console.log(`✨ Product "${title}" is now officially live on Kaplance Digital!`);
-            
-            return res.status(200).json({ success: true, message: "Asset folder packaged and pushed live." });
-        });
-
-        zipArchive.on('error', (err) => { throw err; });
-        
-        zipArchive.pipe(outputStream);
-        
-        // Loop through all uploaded files and append them to the zip bundle structure
-        req.files.forEach(file => {
-            zipArchive.file(file.path, { name: file.originalname });
-        });
-        
-        zipArchive.finalize();
-
-    } catch (error) {
-        console.error("❌ Admin panel compilation crash error:", error.message);
-        return res.status(500).json({ success: false, message: "Internal server archiving breakdown." });
-    }
-});
-
-// ==========================================
-// 🛒 ROUTE B: PUBLIC STOREFRONT ACTIVE CATALOG FETCH HOOK
-// ==========================================
-app.get('/api/v1/products', (req, res) => {
-    // Serves the live dynamic inventory array to index.html
-    res.status(200).json(productCatalogDatabase);
-});
-
 
 // ----------------------------------------------------------------
 // 5. SERVER START
