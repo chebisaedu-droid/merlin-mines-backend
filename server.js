@@ -7,7 +7,12 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
 const axios = require('axios'); // Requires: npm install axios
+const multer = require('multer');
+const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');  // 👈 THIS IS THE MISSING KEY
 
+// ... Global Middlewares start here ...
 const app = express();
 app.use(express.json());
 app.use(cors());
